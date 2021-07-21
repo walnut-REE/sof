@@ -1,0 +1,6 @@
+[submodule "scripts/scripts/gmm-torch"]
+	path = scripts/scripts/gmm-torch
+	url = https://github.com/ldeecke/gmm-torch.git
+[submodule "scripts/gmm-torch"]
+	path = scripts/gmm-torch
+	url = https://github.com/ldeecke/gmm-torch.git

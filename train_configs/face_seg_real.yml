@@ -1,0 +1,16 @@
+#data_root: /mnt/win_data/shanghaiTech/Dataset/multi-view/
+data_root: /home/anpei/liury/data/facial-data/seg_face_real3
+# data_root: /data/anpei/facial-data/seg_face_syn
+logging_root: ./log/
+img_sidelength: 128
+output_sidelength: 128
+batch_size: 8
+max_steps: 400000
+sample_instances_train: 0-220
+sample_instances_val: 0-27
+sample_observations_train: 2-9
+sample_observations_val: 0,1
+out_channels: 20
+dpt_scale: 1.0
+orthogonal: True
+# renderer: ImAE

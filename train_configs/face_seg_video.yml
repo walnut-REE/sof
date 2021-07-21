@@ -1,0 +1,13 @@
+data_root: /data/anpei/facial-data/seg_video
+checkpoint_path: ./logs/checkpoints/face_seg_20.pth # Path to the pre-trained checkpoint
+data_type: seg
+lr: 5e-4
+animated: 64
+sample_observations_train: -1
+overwrite_embeddings: True
+freeze_networks: True
+img_sidelengths: 128
+output_sidelength: 128
+batch_size_per_img_sidelength: 8
+max_steps_per_img_sidelength: 400000
+out_channels: 20

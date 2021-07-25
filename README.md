@@ -26,7 +26,7 @@ Create a root directory (e.g. `data`), and for each instance (e.g. `00000`) crea
         └── ...
 ```
 
-Download the data from [here]().
+Download the data from [here](). We also provide a [notebook](https://github.com/walnut-REE/sof/blob/main/scripts/DataPreprocess.ipynb) for data preprocessing.
 
 ## Training
 ```
@@ -34,18 +34,12 @@ python train.py --config_filepath=./configs/face_seg_real.yml
 ```
 
 ## Inference
-TBD.
-<!-- Modify `configs/test.yml` with corredct `data_root` and `checkpoint_path`, use the following command to test your model:
-
-```
-python test.py --data_root [path to directory with dataset] ] \
-               --logging_root [path to directoy where test output should be written to] \
-               --num_instances [number of instances in training set (for instance, 2433 for shapenet cars)] \
-               --checkpoint [path to checkpoint]
-```
-
-We also provide testing scripts in `scripts`, please find the instruction [here](https://github.com/walnut-REE/sof/scripts).  -->
-
+Once trained, SOF could be used for generating free-view segmentation maps for arbitrary instances in the geometric space. The inference codes are provided in notebooks in `scripts`:
+* To generate sampling free-view portrait segmentations from the geometry space, please refer to `scripts\Test_MV_Inference.ipynb`.
+* To visulalize a trained SOF volume as in Fig.5, please use `scripts\Test_Slicing.ipynb`.
+* To calculat mIOU during SOF training (Fig.9), please modify the model checkpoint directory and run `scripts\Test_mIoU.ipynb`.
+* To generate the portrait geometry proxy in Fig.20 with marching cube, please refer to `scripts\Test_MCube.ipynb`.
+* We also provide `scripts\Test_GMM.ipynb` for miscs like fitting GMM model to the geometric space.
 
 # Acknowledgment
 Thanks [vsitzmann](https://github.com/vsitzmann) for sharing the awesome idea of [SRNs](https://github.com/vsitzmann/scene-representation-networks.git), which has greatly inspired our design of SOF.

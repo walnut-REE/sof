@@ -199,11 +199,6 @@ def load_params(filename):
     return params
 
 
-def cond_mkdir(path):
-    if not os.path.exists(path):
-        os.makedirs(path)
-
-
 def square_crop_img(img):
     min_dim = np.amin(img.shape[:2])
     center_coord = np.array(img.shape[:2]) // 2
@@ -217,11 +212,12 @@ def train_val_split(object_dir, train_dir, val_dir):
     data_lists = [sorted(glob(os.path.join(dir, x)))
                   for dir, x in zip(dirs, ['*.txt', "*.png", "*.png"])]
 
-    cond_mkdir(train_dir)
-    cond_mkdir(val_dir)
+    os.makedirs(train_dir, exist_ok=True)
+    os.makedirs(val_dir, exist_ok=True)
 
-    [cond_mkdir(os.path.join(train_dir, x)) for x in ['pose', 'rgb', 'depth']]
-    [cond_mkdir(os.path.join(val_dir, x)) for x in ['pose', 'rgb', 'depth']]
+
+    [os.makedirs(os.path.join(train_dir, x), exist_ok=True) for x in ['pose', 'rgb', 'depth']]
+    [os.makedirs(os.path.join(val_dir, x), exist_ok=True) for x in ['pose', 'rgb', 'depth']]
 
     shutil.copy(os.path.join(object_dir, 'intrinsics.txt'), os.path.join(val_dir, 'intrinsics.txt'))
     shutil.copy(os.path.join(object_dir, 'intrinsics.txt'), os.path.join(train_dir, 'intrinsics.txt'))
@@ -270,9 +266,10 @@ def shapenet_train_test_split(shapenet_path, synset_id, name, csv_path):
 
     train_path, val_path, test_path = [os.path.join(shapenet_path, str(synset_id) + '_' + name + '_' + x)
                                        for x in ['train', 'val', 'test']]
-    cond_mkdir(train_path)
-    cond_mkdir(val_path)
-    cond_mkdir(test_path)
+    
+    os.makedirs(train_path, exist_ok=True)
+    os.makedirs(val_path, exist_ok=True)
+    os.makedirs(test_path, exist_ok=True)
 
     for split_df, trgt_path in zip([train, val, test], [train_path, val_path, test_path]):
         for row_no, row in split_df.iterrows():

@@ -6,7 +6,7 @@ import numpy as np
 import bisect
 
 import torchvision
-import util
+import utils.common as util
 
 import skimage.measure
 from torch.nn import functional as F
@@ -124,7 +124,6 @@ class SOFModel(nn.Module):
             print('[INIT embedding] optimize camera.')
 
         else:
-            # print('*** Init embedding: (%d, %d)'%(self.num_instances, self.latent_dim))
             self.latent_codes = nn.Embedding(
                 self.num_instances, self.latent_dim).cuda()
             nn.init.normal_(self.latent_codes.weight, mean=0, std=0.01)
@@ -134,8 +133,6 @@ class SOFModel(nn.Module):
             self.logs.append(("embedding", "", self.latent_codes.weight, 1000))
             print('[INIT embedding] variable.')
 
-
-        # self.hyper_phi = hyperlayers.Linear(3, 256, self.latent_dim)
         self.hyper_phi = hyperlayers.HyperFC(hyper_in_ch=self.latent_dim,
                                              hyper_num_hidden_layers=1,
                                              hyper_hidden_ch=self.latent_dim,
@@ -181,10 +178,6 @@ class SOFModel(nn.Module):
         # Losses
         self.l2_loss = nn.MSELoss(reduction="mean")
 
-        # print(self)
-        # print("Number of parameters:")
-        # util.print_network(self)
-
     def reset_net_status(self):
         if self.freeze_networks:
             all_network_params = (list(self.pixel_generator.parameters())
@@ -200,20 +193,13 @@ class SOFModel(nn.Module):
         num_samples = len(self.sample_frames)
         sample_frames = self.sample_frames.unsqueeze(0)
 
-        # print('*** frame_idx: ', frame_idx)
-        # print('*** sample_frames: ', self.sample_frames)
-
         emb_idx = torch.sum(frame_idx.unsqueeze(
             1) >= sample_frames, axis=1).long().cuda()
-        # print('*** emb_idx: ', emb_idx)
         emb_idx = (emb_idx - 1 + num_samples) % num_samples
-        # print('*** emb_idx: ', emb_idx, emb_idx.shape, self.ami_code(emb_idx).shape)
 
         weights = torch.abs(frame_idx - sample_frames[:, emb_idx]) / (
                 sample_frames[:, (emb_idx + 1) % num_samples] - sample_frames[:, emb_idx])
-        # print('*** weights = ', weights.shape, weights)
         weights = weights.permute((1, 0))
-        # print('*** weights = ', weights.shape, weights)
         ami_emb = self.ami_code(emb_idx) * (1.0 - weights) + \
                   self.ami_code((emb_idx + 1) % num_samples) * weights
 
@@ -222,7 +208,6 @@ class SOFModel(nn.Module):
         else:
             emb = torch.cat([instance_emb, ami_emb], axis=1)
 
-        # print('*** emb = ', emb.shape)
         return emb
 
     def get_loss(self, prediction, ground_truth, opt):
@@ -248,7 +233,7 @@ class SOFModel(nn.Module):
             self.logs.append(("scalar", "Loss/latent", latent_loss, 100))
 
         if opt.geo_weight > 0:
-            geo_loss = model.get_geo_loss(prediction, ground_truth)
+            geo_loss = self.get_geo_loss(prediction, ground_truth)
             weighted_geo_loss = opt.geo_weight * geo_loss
             total_loss += weighted_geo_loss
             self.logs.append(("scalar", "Loss/reg", weighted_geo_loss, 100))
@@ -263,10 +248,6 @@ class SOFModel(nn.Module):
         :return: Regularization loss on final depth map.
         """
         _, depth = prediction
-
-        # print('*** depth = ', depth.shape, torch.zeros_like(depth).shape)
-        # print(torch.max(depth), torch.min(depth))
-
         neg_penalty = (torch.min(depth, torch.zeros_like(depth)) ** 2)
         return torch.mean(neg_penalty) * 10000
 
@@ -288,11 +269,6 @@ class SOFModel(nn.Module):
     def get_cls_loss(self, prediction, ground_truth):
 
         xent_loss = nn.CrossEntropyLoss(reduction='mean')
-
-        # print('**** get_cls_loss: ')
-        # print(ground_truth['rgb'].shape, np.unique(ground_truth['rgb'].detach().cpu().numpy()))
-        # print(prediction[0].shape, np.unique(prediction[0].detach().cpu().numpy()))
-
         pred_imgs, _ = prediction
 
         pred_imgs = pred_imgs.permute(0, 2, 1)  # (B, C, H*W) in [0, 1], softmax prob
@@ -314,9 +290,6 @@ class SOFModel(nn.Module):
             torch.sum(pred_onehot & trgt_onehot, dim=1).float(),
             torch.sum(pred_onehot | trgt_onehot, dim=1).float() + 1e-6)
         mIoU = IoU[IoU!=0].mean()
-
-        # print('*** mIoU = ', pred_onehot.shape, trgt_onehot.shape, mIoU)
-
         self.logs.append(("scalar", "mIoU", mIoU, 1))
 
         return loss
@@ -337,25 +310,15 @@ class SOFModel(nn.Module):
             # normalize pred_img
             pred_depth = pred_depth * (pred_img != 0).float()
 
-        # print('*** geo_dpt_pred: ', z_range.shape, pred_depth.shape, torch.min(pred_depth), torch.max(pred_depth))
-        # print('*** geo_dpt_trgt: ', z_range.shape, trgt_depth.shape, torch.min(trgt_depth), torch.max(trgt_depth))
-
         loss = geo_loss(pred_depth, trgt_depth)
         nonzero_cnt = (loss > 1e-12).sum(axis=1).clamp(min=1).float()
 
-        # return torch.mean(loss.sum(axis=1) / nonzero_cnt)
         return torch.mean(loss.sum() / nonzero_cnt)
 
     def get_latent_loss(self):
         """Computes loss on latent code vectors (L_{latent} in eq. 6 in paper)
         :return: Latent loss.
         """
-
-        # if hasattr(self, 'mapping_fn'):
-        #     self.latent_reg_loss += -0.5 * \
-        #         torch.sum(1 + self.logvar -
-        #                   (self.mu).pow(2) - self.logvar.exp())
-
         return self.latent_reg_loss
 
     def get_psnr(self, prediction, ground_truth):
@@ -482,8 +445,6 @@ class SOFModel(nn.Module):
                 (predictions, trgt_imgs), dim=0) if trgt_imgs is not None else predictions
             output_vs_gt = util.lin2img(output_vs_gt, color_map)
 
-            # print('*** output_vs_gt = ', output_vs_gt.shape, output_vs_gt.dtype)
-
             writer.add_image(prefix + "Output_vs_gt",
                              torchvision.utils.make_grid(output_vs_gt,
                                                          scale_each=False,
@@ -501,9 +462,6 @@ class SOFModel(nn.Module):
                                   fig,
                                   iter,
                                   close=True)
-
-                # writer.add_scalar(prefix + "trgt_min", trgt_imgs.min(), iter)
-                # writer.add_scalar(prefix + "trgt_max", trgt_imgs.max(), iter)
 
             depth_maps_plot = util.lin2img(depth_maps)
             writer.add_image(prefix + "pred_depth",
@@ -524,35 +482,21 @@ class SOFModel(nn.Module):
                                   iter,
                                   close=True)
 
-        # writer.add_scalar(prefix + "out_min", predictions.min(), iter)
-        # writer.add_scalar(prefix + "out_max", predictions.max(), iter)
-
         if hasattr(self, 'latent_reg_loss'):
             writer.add_scalar(prefix + "latent_reg_loss",
                               self.latent_reg_loss, iter)
 
     def forward(self, pose, z, intrinsics, uv, dpt=None, dpt_scale=1.0, device=None, auc_input=None, orthogonal=None):
 
-        # Parse model input.
-        # instance_idcs = input["instance_idx"].long().cuda()
-        # pose = input["pose"].cuda()
-        # intrinsics = input["intrinsics"].cuda()
-        # uv = input["uv"].cuda().float()
-
         intrinsics = intrinsics.cuda()
         uv = uv.cuda().float()
         self.z = z.cuda()
         cam_pose = pose.cuda()
 
-        # print(pose.shape, intrinsics.shape, z.shape)
-
         orthogonal = self.orthogonal if orthogonal is None else orthogonal
 
-        #         print('*** opt_cam = ', self.opt_cam)
 
         if self.opt_cam:
-            # parse
-            #             print('*** training = ', self.training)
             if self.training:
                 cam_pose = torch.eye(4, requires_grad=True).unsqueeze(
                     0).expand(self.z.shape[0], -1, -1).cuda()
@@ -566,49 +510,26 @@ class SOFModel(nn.Module):
         # Forward pass through hypernetwork yields a (callable) SOF.
         phi = self.hyper_phi(self.z)
 
-        # print('*** 2: ray_marcher.')
-
-        # print('*** forward - init ', torch.cuda.memory_allocated() - cur_mem)
-        # cur_mem = torch.cuda.memory_allocated()
-
-
-        # self.z = z[:,None].expand(-1, uv.shape[1], -1)
         # Raymarch SOF phi along rays defined by camera pose, intrinsics and uv coordinates.
         points_xyz, depth_maps, log = self.ray_marcher(cam2world=cam_pose,
                                                        intrinsics=intrinsics,
                                                        uv=uv,
                                                        dpt=dpt,
                                                        dpt_scale=dpt_scale,
-                                                       phi=phi,#self.hyper_phi,
+                                                       phi=phi,
                                                        orthogonal=orthogonal,
-                                                       #z=self.z,
-                                                       # positionEncoder=self.positionEncoder)
-
                                                        )
-        # print(uv)
-        # print(points_xyz)
-        # print('*** forward - ray_marcher ', torch.cuda.memory_allocated()-cur_mem)
-        # cur_mem = torch.cuda.memory_allocated()
 
         # Sapmle phi a last time at the final ray-marched world coordinates.
-        # v = self.hyper_phi(torch.cat((self.z,self.positionEncoder(points_xyz)),dim=2))
         v = phi(points_xyz)
 
-        # print('*** forward - hyper ', torch.cuda.memory_allocated())
-        # cur_mem = torch.cuda.memory_allocated()
-        # Translate features at ray-marched world coordinates to RGB colors.
 
         ############ with implicit encoder #############
         if self.renderer == 'ImAE':
-            # print('*** v = ', v.shape, points_xyz.shape)
             v = torch.cat([v, points_xyz], dim=2)
 
         novel_views = self.pixel_generator(v)
 
-        # print('***** novel_views = ', novel_views.shape)
-
-        # print('*** forward - pixel_generator ', torch.cuda.memory_allocated()-cur_mem)
-        # cur_mem = torch.cuda.memory_allocated()
 
         if self.output_sidelength != self.img_sidelength:
             novel_views = novel_views.permute(0, 2, 1).view(
@@ -620,9 +541,6 @@ class SOFModel(nn.Module):
                 mode='bilinear', align_corners=True)
 
             novel_views = novel_views.view(-1, self.out_channels, self.output_sidelength ** 2).permute(0, 2, 1)
-
-            # print('*** forward - up_scaling ', torch.cuda.memory_allocated()-cur_mem)
-            # cur_mem = torch.cuda.memory_allocated()
 
         # Calculate normal map
         if self.training:
@@ -643,14 +561,5 @@ class SOFModel(nn.Module):
                                   torchvision.utils.make_grid(normals, scale_each=True, normalize=True), 100))
 
             self.logs.append(("histogram", "embedding", self.z, 1000))
-            # if self.opt_cam:
-            #     self.logs.append(("mesh", "", self.cam_pose.weight, 100))
-
-            # self.logs.append(
-            #     ("embedding", "", self.latent_codes.weight, 1000))
-
-            # self.logs.append(("scalar", "embed_min", self.z.min(), 1))
-            # self.logs.append(("scalar", "embed_max", self.z.max(), 1))
-        # print('***** depth_map = ', depth_maps.shape)
 
         return novel_views, depth_maps

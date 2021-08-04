@@ -7,11 +7,12 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 
-from dataset.face_dataset import FaceClassDataset, CelebAMaskDataset
+import dataset
 
 from torch.utils.data import DataLoader
 from modeling import SOFModel
-import util
+import utils.common as util
+
 import random
 import re
 import shutil
@@ -60,6 +61,10 @@ p.add_argument('--batch_size', type=int, default=8,
                     'If comma-separated list, will train each image sidelength with respective batch size.')
 
 # Training options
+p.add_argument('--dataset_train', type=str, default='FaceClassDataset',
+               help='Specify training dataset classes.')
+p.add_argument('--dataset_val', type=str, default='FaceClassDataset',
+               help='Specify validation dataset classes.')
 p.add_argument('--data_root', type=str, default='/data/anpei/facial-data/seg_face_8000',
                help='Path to directory with training data.')
 p.add_argument('--logging_root', type=str, default=_HOME_DIR+'/liury/log/SOF',
@@ -146,6 +151,7 @@ def train():
     now = datetime.now()
     task_name = opt.name if opt.name else os.path.splitext(
         os.path.basename(opt.config_filepath))[0]
+
     log_dir = os.path.join(opt.logging_root, now.strftime('%m%d%H')+task_name)
 
     os.makedirs(log_dir, exist_ok=True)
@@ -164,27 +170,18 @@ def train():
             shutil.copy(idx_fp, os.path.join(opt.data_root, 'indexing.txt'))
 
     # get dataset
-
-    # data_ckpt_dir = os.path.join(opt.checkpoint_path, '..', '..') if (opt.checkpoint_path and not opt.overwrite_embeddings) else log_di
-    # train_dataset = FaceClassDataset(
-    #     root_dir=opt.data_root,
-    #     ckpt_dir=data_ckpt_dir,
-    #     data_type=opt.data_type,
-    #     img_sidelength=opt.output_sidelength,
-    #     sample_observations=opt.sample_observations_train,
-    #     sample_instances=opt.sample_instances_train,
-    #     load_depth=(opt.geo_weight > 0.0))
-
-    train_dataset = CelebAMaskDataset(
+    data_ckpt_dir = os.path.join(opt.checkpoint_path, '..', '..') if (opt.checkpoint_path and not opt.overwrite_embeddings) else log_dir
+    train_dataset = getattr(dataset, opt.dataset_train)(
         root_dir=opt.data_root,
-        ckpt_dir=log_dir,
-        img_sidelength=opt.output_sidelength)
+        ckpt_dir=data_ckpt_dir,
+        data_type=opt.data_type,
+        img_sidelength=opt.output_sidelength,
+        sample_observations=opt.sample_observations_train,
+        sample_instances=opt.sample_instances_train,
+        load_depth=(opt.geo_weight > 0.0))
 
     iter = opt.start_step
-
-    # print('*** iter = ', iter, len(train_dataset))
     epoch = iter // len(train_dataset)
-
     print('[DONE] load train dataset.', len(train_dataset))
 
     if not no_validation:
@@ -195,7 +192,7 @@ def train():
             opt.sample_observations_val = list(
                 set(range(_NUM_OBSERVATIONS)) - set(opt.sample_observations_train))
 
-        val_dataset = FaceClassDataset(
+        val_dataset = getattr(dataset, opt.data_val)(
             root_dir=opt.data_root,
             ckpt_dir=data_ckpt_dir,
             data_type=opt.data_type,
@@ -211,15 +208,8 @@ def train():
                                     shuffle=True,
                                     drop_last=True,
                                     collate_fn=val_dataset.collate_fn)
-
     print('Init SOF model.')
 
-    # if opt.animated > 0:
-    #     batch_size = batch_size_per_sidelength[0] * 2
-    #     sample_size = len(opt.sample_observations_train) // batch_size
-    #     sample_frames = np.random.randint(batch_size, size=sample_size) + np.arange(sample_size) * batch_size
-    # else:
-    #     sample_frames = None
 
     model = SOFModel(num_instances=train_dataset.num_instances,
                       orthogonal=opt.orthogonal,
@@ -302,12 +292,7 @@ def train():
             intrinsics = model_input['intrinsics']
             uv = model_input['uv']
 
-            # print('*** instance_idx = ', model_input['instance_idx'])
-
             z = model.get_embedding(model_input)
-            # z_range = model_input['z_range'] if 'z_range' in model_input else None
-            # print('*** z_range = ', model_input.keys(), z_range.shape)
-
             model_outputs = model(pose, z, intrinsics, uv,
                                   dpt_scale=opt.dpt_scale)
 
@@ -342,9 +327,6 @@ def train():
 
             optimizer.step()
 
-            # print("Iter %07d   Epoch %03d   L_img %0.4f   L_latent %0.4f   L_depth %0.4f" %
-            #       (iter, epoch, weighted_dist_loss, weighted_latent_loss, weighted_reg_loss))
-
             model.write_updates(writer, model_outputs, ground_truth,
                                 iter, mode="train", color_map=train_dataset.color_map)
 
@@ -370,7 +352,6 @@ def train():
                         uv = model_input['uv']
 
                         z = model.get_embedding(model_input)
-                        # z_range = model_input['z_range'] if 'z_range' in model_input else None
 
                         model_outputs = model(
                             pose, z, intrinsics, uv, dpt_scale=opt.dpt_scale)

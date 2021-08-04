@@ -2,7 +2,7 @@ import numpy as np
 import torch
 
 from torch.nn import functional as F
-import util
+import utils.common as util
 
 def compute_normal_map(x_img, y_img, z, intrinsics, orthogonal=False):
     cam_coords = lift(x_img, y_img, z, intrinsics, orthogonal=orthogonal)
@@ -36,8 +36,6 @@ def get_ray_directions_cam(uv, intrinsics, orthogonal=False):
         homogeneous=False, orthogonal=orthogonal)  # (batch_size, 4)
     ray_dirs = F.normalize(pixel_points_cam, dim=2)
 
-    print('*** ray_dirs = ', ray_dirs.shape)
-
     return ray_dirs
 
 
@@ -56,8 +54,6 @@ def parse_intrinsics(intrinsics):
     fy = intrinsics[:, 1, 1]
     cx = intrinsics[:, 0, 2]
     cy = intrinsics[:, 1, 2]
-
-    # print('*** fx, fy, cx, cy = ', fx, fy, cx, cy)
 
     return fx, fy, cx, cy
 
@@ -92,9 +88,6 @@ def lift(x, y, z, intrinsics, homogeneous=False, orthogonal=False):
         # x_lift = (expand_as(cx, x) - x) / expand_as(fx, x) * z
         x_lift = (x - expand_as(cx, x)) / expand_as(fx, x) * z
         y_lift = (y - expand_as(cy, y)) / expand_as(fy, y) * z
-
-    # print('*** x_lift, y_lift = ', x_lift.shape, y_lift.shape, cx, cy, z.shape)
-    # print('*** x_lift, y_lift = ', x_lift[:, 0], y_lift[:, 0], z.shape)
 
     if homogeneous:
         return torch.stack((x_lift, y_lift, z, torch.ones_like(z).cuda()), dim=-1)
@@ -158,7 +151,6 @@ def get_ray_directions(xy, cam2world, intrinsics, orthogonal=False):
             torch.zeros(batch_size, num_samples),
             torch.ones(batch_size, num_samples)], dim=-1).permute(0, 2, 1).to(xy.device)
 
-        # print('*** bmm = ', cam2world.shape, pixel_points.shape)
         ray_dirs = torch.bmm(cam2world[:, :3, :3], pixel_points).permute(0, 2, 1)
 
     else:
@@ -172,8 +164,6 @@ def get_ray_directions(xy, cam2world, intrinsics, orthogonal=False):
         ray_dirs = pixel_points - cam_pos[:, None, :]  # (batch, num_samples, 3)
         ray_dirs = F.normalize(ray_dirs, dim=2) # (B, num_samples, 3)
     
-    # print('*** ray_dirs = ', ray_dirs.shape)
-
     return ray_dirs
 
 

@@ -98,10 +98,7 @@ def load_seg_map(path, sidelength=None, num_classes=20, remap_fn=None, cam_int=N
 
     if sidelength is not None:
         height, width = img.shape
-        # print('*** [seg] height, width = ', height, width)
         img = cv2.resize(img, (sidelength, sidelength), interpolation=cv2.INTER_NEAREST)
-
-        # print('*** cam_int [orig] = \n', cam_int, sidelength, height, width)
 
         if cam_int is not None:
             cam_int = cam_int.copy()
@@ -109,8 +106,6 @@ def load_seg_map(path, sidelength=None, num_classes=20, remap_fn=None, cam_int=N
             cam_int[1, 2] *= (sidelength / height)
             cam_int[0, 0] *= (sidelength / width)
             cam_int[1, 1] *= (sidelength / height)
-
-        # print('*** cam_int [trans] = \n', cam_int, sidelength, height, width)
     
     img = img.reshape(1, -1).transpose(1, 0)
 
@@ -134,25 +129,8 @@ def load_video_seg(path, sidelength=None):
     
     seg = seg.reshape(1, -1).transpose(1, 0)
 
-    # print('*** load video seg: ', seg.shape)
-
     return seg
 
-
-# def load_depth(path, sidelength=None):
-#     img = cv2.imread(path, cv2.IMREAD_UNCHANGED).astype(np.float32)
-
-#     if sidelength is not None:
-#         img = cv2.resize(img, (sidelength, sidelength), interpolation=cv2.INTER_NEAREST)
-
-#     img *= 1e-4
-
-#     if len(img.shape) == 3:
-#         img = img[:, :, :1]
-#         img = img.transpose(2, 0, 1)
-#     else:
-#         img = img[None, :, :]
-#     return img
 
 def load_depth(path, sidelength=None, zRange=None):
     img = cv2.imread(path, cv2.IMREAD_UNCHANGED).astype(np.float32)
@@ -167,16 +145,12 @@ def load_depth(path, sidelength=None, zRange=None):
         img = img[None, :, :]
 
     img = img / 255.0
-    # print('*** load depth: ', np.max(img), np.min(img))
 
     if zRange is not None:
         mask = (img > 1e-12).astype(np.float32)
         img = img * (zRange[1] - zRange[0]) + zRange[0]
-        # print('***** normalize depth 0: ', np.max(img), np.min(img))
         img = img * mask      
     
-    # print('***** normalize depth 1: ', np.max(img), np.min(img))
-
     return img
 
 

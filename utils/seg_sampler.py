@@ -13,14 +13,15 @@ import numpy as np
 from modeling import SOFModel
 from glob import glob
 
+
 _DEFAULT_MODEL_PATH = os.path.join(
     SOF_ROOT_DIR, 'checkpoints/epoch_0018_iter_070000.pth')
 _DEFAULT_INT = os.path.join(
     SOF_ROOT_DIR, 'data/intrinsics.txt')
 
+
 def _campos2matrix(cam_pos, cam_center=None, cam_up=None):
     _cam_target = np.asarray([0,0.11,0.1]).reshape((1, 3)) if cam_center is None else cam_center
-    # print('*** cam_center = ', _cam_target.shape)
 
     _cam_up = np.asarray([0.0, 1.0, 0.0]) if cam_up is None else cam_up
 
@@ -105,6 +106,7 @@ def _rand_cam_sphere(   R=1.5,
     cam_pos = np.asarray(cam_pos)
     
     return cam_pos
+
 
 def _rand_cam_plane(R=1.2, 
                     num_samples=15, 
@@ -207,7 +209,6 @@ def _rand_cam_spiral(   R=1.2,
 
 
 def _get_random_poses(sample_radius, num_samples, mode, cam_center=None, cam_pos=None, sample_range=None):
-    # print('*** _get_random_poses cam_center = ', cam_center)
     if cam_pos is None:
         if mode == 'sphere':
             cam_pos = _rand_cam_sphere(

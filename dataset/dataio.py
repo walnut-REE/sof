@@ -3,7 +3,7 @@ import torch
 import numpy as np
 from glob import glob
 import data_util
-import util
+import utils.common as util
 
 
 def pick(list, item_idcs):
@@ -210,7 +210,6 @@ def _rand_cam_cube(Rx=0.5, Ry=0.5, Rz=1.0, num_samples=15):
     z = -(np.random.rand(num_samples, 1)) * Rz
 
     cam_pos = np.concatenate([x, z, y], axis=1)
-    # print('*** cam_pos = ', cam_pos.shape, cam_pos)
     return cam_pos
 
 def _rand_cam_sphere(R=2.0, num_samples=15, random=False):
@@ -515,7 +514,6 @@ class FaceInstanceDataset():
                 if np.max(seg_img) > 19:
                     seg_img /= 10.0
                 
-                # print('**** seg_img = ', seg_img.shape)
                 img_channels = seg_img.shape[0]
                 seg_img = seg_img.reshape(img_channels, -1).transpose(1, 0)
                 sample['rgb'] = torch.from_numpy(seg_img).float()
@@ -532,12 +530,10 @@ class FaceInstanceDataset():
             if self.z_range is not None:
                 depth_img = data_util.load_depth(
                     depth_path, sidelength=self.img_sidelength, zRange=self.z_range[idx])
-                # print('=== depth = ', np.max(depth_img), np.min(depth_img), self.z_range[idx])
             else:
                 depth_img = data_util.load_depth(depth_path, sidelength=self.img_sidelength)
             depth_img = depth_img.reshape(1, -1).transpose(1, 0)
             sample['depth'] = torch.from_numpy(depth_img).float()
-            # print('Load depth from %s'%(depth_path), sample['depth'].shape, sample['rgb'].shape)
 
         return sample
 
@@ -566,8 +562,6 @@ class FaceClassDataset(torch.utils.data.Dataset):
                  sample_instances=None,
                  sample_observations=None,
                  load_depth=False):
-
-        # print('*** load_depth = ', load_depth)
 
         tot_instances = glob(os.path.join(root_dir, '*/'))
         

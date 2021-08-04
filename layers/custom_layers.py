@@ -1,5 +1,5 @@
 import torchvision
-import util
+import utils.common as util
 
 from layers.pytorch_prototyping import Unet, UpsamplingNet, Conv2dSame
 from layers.dimension_kernel import Trigonometric_kernel

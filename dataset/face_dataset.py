@@ -3,11 +3,12 @@ from pathlib import Path
 import torch
 import numpy as np
 from glob import glob
+import random
 
 import cv2
 from dataset import data_util
 
-import util
+import utils.common as util
 
 
 _COLOR_MAP = np.asarray([[0, 0, 0], [204, 0, 0], [76, 153, 0], [204, 204, 0], 
@@ -277,7 +278,6 @@ class FaceInstanceDataset():
 
                 sample['rgb'] = torch.from_numpy(seg_img).float()
                 sample['intrinsics'] = torch.from_numpy(cam_int).float()
-                # print('*** cam_int = ', cam_int)
             
             elif self.data_type == 'rgb':
                 render_img, cam_int = data_util.load_rgb(
@@ -323,8 +323,6 @@ class FaceInstanceRandomPose(FaceInstanceDataset):
         self.intrinsics = intrinsics
         self.img_sidelength = img_sidelength
         
-        print('*** intrinsics = ', intrinsics.shape)
-
         self.z_range = None
 
         self.poses = _get_random_poses(
@@ -361,7 +359,7 @@ class FaceClassDataset(torch.utils.data.Dataset):
 
     def __init__(self,
                  root_dir,
-                 ckpt_dir=None,
+                 ckpt_dir='',
                  data_type='seg',
                  cam2world_fp='cam2world.npy',
                  intrinsics_fp='intrinsics.npy',
@@ -372,7 +370,7 @@ class FaceClassDataset(torch.utils.data.Dataset):
         
         tot_instances = sorted(glob(os.path.join(root_dir, '*/')))
 
-        if ckpt_dir is not None:
+        if ckpt_dir:
             idx_fp = os.path.join(ckpt_dir, 'indexing.txt')
             if os.path.exists(idx_fp):
                 print('> Load indexing file from: ', idx_fp)
@@ -380,9 +378,16 @@ class FaceClassDataset(torch.utils.data.Dataset):
             else:  
                 print('> Save indexing file to: ', idx_fp)          
                 with open(idx_fp, 'w') as f: f.writelines('\n'.join(tot_instances))
-        
+
         if sample_instances is not None:
-            tot_instances=[tot_instances[idx] for idx in sample_instances if idx < len(tot_instances)]
+            if isinstance(sample_instances, int): 
+                tot_instances = random.choices(
+                    tot_instances, k=min(sample_instances, len(tot_instances)))
+            elif isinstance(sample_instances, list):
+                tot_instances=[tot_instances[idx] for idx in sample_instances \
+                    if idx < len(tot_instances)]
+            else:
+                raise ValueError('Invalid sample_instances, should be int or list.')
 
         self.num_instances = len(tot_instances)
 
@@ -517,11 +522,16 @@ class FaceRandomPoseDataset(FaceClassDataset):
 class CelebAMaskDataset(FaceClassDataset):
 
     def __init__(self,
-                 root_dir,
-                 ckpt_dir=None,
-                 img_sidelength=128,
-                 num_instances=1000
-                 ):
+                root_dir,
+                ckpt_dir=None,
+                data_type='seg',
+                cam2world_fp='cam2world.npy',
+                intrinsics_fp='intrinsics.npy',
+                img_sidelength=None,
+                sample_instances=None,
+                sample_observations=None,
+                load_depth=False):
+        _ = data_type, cam2world_fp, intrinsics_fp, sample_observations, load_depth
 
         _DEFAULT_INT = np.array([
             [[2000, 0, 256], [0, 2000, 256], [0, 0, 1]]], dtype=np.float32)
@@ -531,28 +541,23 @@ class CelebAMaskDataset(FaceClassDataset):
                                 [0., 0., 1., 1.1],
                                 [0., 0., 0., 1.]]], dtype=np.float32)
 
-        idx_fp = os.path.join(
-            ckpt_dir, 'indexing.txt') if ckpt_dir is not None else None
+        idx_fp = os.path.join(ckpt_dir, 'indexing.txt')
 
-        if idx_fp is not None and os.path.exists(idx_fp):
+        if os.path.exists(idx_fp):
             print('> Load indexing file from: ', idx_fp)
             with open(idx_fp, 'r') as f:
                 tot_imgs = [x.strip() for x in f.readlines()]
 
         else:
             tot_imgs = sorted(glob(os.path.join(root_dir, '*.png')))
-
-            if num_instances > 0 and num_instances < len(tot_imgs):
-                import random
-                tot_imgs = random.choices(tot_imgs, k=num_instances)
-             # save indexing dict
-            with open(idx_fp, 'w') as f:
-                f.writelines('\n'.join(tot_imgs))
+            if len(tot_imgs) > 0:
+                if sample_instances > 0 and sample_instances < len(tot_imgs):
+                    tot_imgs = random.choices(tot_imgs, k=sample_instances)
+                # save indexing dict
+                with open(idx_fp, 'w') as f:
+                    f.writelines('\n'.join(tot_imgs))
 
         print('Load CelebA, num_instances = ', len(tot_imgs))
-
-        if isinstance(num_instances, int):
-            num_instances = list(range(num_instances))
 
         self.all_instances = [FaceInstanceDataset(instance_idx=instance_idx,
                                                   instance_path=instance_fp,
@@ -602,13 +607,12 @@ class FaceRealDataset(FaceClassDataset):
             tot_imgs = sorted(glob(os.path.join(root_dir, '*.png')))
 
             if num_instances > 0 and num_instances < len(tot_imgs):
-                import random
                 tot_imgs = random.choices(tot_imgs, k=num_instances)
              # save indexing dict
             with open(idx_fp, 'w') as f:
                 f.writelines('\n'.join(tot_imgs))
 
-        print('Load CelebA, num_instances = ', len(tot_imgs))
+        print('Load portraits, num_instances = ', len(tot_imgs))
 
         if isinstance(num_instances, int):
             num_instances = list(range(num_instances))

@@ -200,12 +200,7 @@ class VolRender:
         bg_prob = full_prob[:, :, :, 0]
         fg_prob = np.max(full_prob[:, :, :, 1:], axis=-1)
 
-#         print('*** bg_prob = ', bg_prob.shape, np.max(bg_prob), np.min(bg_prob))
-#         print('*** fg_prob = ', fg_prob.shape, np.max(fg_prob), np.min(fg_prob))
-
         vol_data = bg_prob - fg_prob
-
-#         vol_data = bg_prob - 0.99
         
         return vol_data
         
@@ -259,25 +254,13 @@ class VolRender:
 
             p = mp.plot(world_v, f, c, return_plot=True)
 
-#             p.add_edges(v_box, f_box[0:1], shading={"line_color": "red"});
-#             p.add_edges(v_box, f_box[3:4], shading={"line_color": "green"});
-#             p.add_edges(v_box, f_box[8:9], shading={"line_color": "blue"});
-            
-#             p.add_edges(v_origin, f_origin[0:1], shading={"line_color": "red"});
-#             p.add_edges(v_origin, f_origin[1:2], shading={"line_color": "green"});
-#             p.add_edges(v_origin, f_origin[2:3], shading={"line_color": "blue"});
-
-#             p.add_points(v_box[0], shading={"point_color": "black"})
-        
         
     def render(self, cam_P, cam_K, resolution=None):
         
         fx, cx, fy, cy = cam_K[0,0], cam_K[0,2], cam_K[1,1], cam_K[1,2]
         
         render_reso = resolution if resolution is not None else self.reso[:2]
-        
-        # opencv cam_P (up=-y, dir=+z) to render cam_P (up=y, dir=-z)
-                
+                        
         if self.ortho:
             render_cam_P = np.linalg.inv(_CV2GL@cam_P)
             _, depth = render_ortho(
@@ -288,11 +271,6 @@ class VolRender:
             render_cam_P = np.linalg.inv(render_cam_P)
             _, depth_piror = render_perp(
                 self.mesh, cam_K, model=render_cam_P, resolution=render_reso)
-#             kernel_size = 5
-#             smallBlur = np.ones((kernel_size, kernel_size), dtype="float") * (1.0 / (kernel_size * kernel_size))
-#             depth_piror = cv2.filter2D(depth_piror,-1,smallBlur)
-            
-#         print('*** depth = ', depth.shape, np.max(depth), np.min(depth))
             
         rgb, out_seg, _, pred_dpt = render_scene_cam(
             self.model, self.latent, cam_P, cam_K, self.reso[0])
@@ -300,60 +278,5 @@ class VolRender:
         rgb2, out_seg2, _, pred_dpt_with_init = render_scene_cam(
             self.model, self.latent, cam_P, cam_K, self.reso[0], 
             dpt=torch.from_numpy(depth_piror.copy()).unsqueeze(0))
-        
-#         dpt_err_map = np.abs(pred_dpt - depth)
-        
-#         print('*** pred_depth = ', np.max(pred_dpt), np.min(pred_dpt))
-#         print('*** dpt_err_map = ', np.max(dpt_err_map), np.min(dpt_err_map))
-        
-        
-#         tot_num_plots = 6
-#         cur_plot = 1
-        
-#         figure=plt.figure(figsize=(10,5))
-#         plt.subplot(1, tot_num_plots, cur_plot)
-#         plt.title('pred_seg')
-#         plt.imshow(rgb)
-#         plt.grid("off");
-#         plt.axis("off");
-#         cur_plot += 1
-        
-#         plt.subplot(1, tot_num_plots, cur_plot)
-#         plt.title('render_seg')
-#         plt.imshow(rgb2)
-#         plt.grid("off");
-#         plt.axis("off");
-#         cur_plot += 1
-
-#         plt.subplot(1, tot_num_plots, cur_plot)
-#         plt.title('depth')
-#         plt.imshow(depth, cmap='gist_yarg')
-#         plt.grid("off");
-#         plt.axis("off");
-#         cur_plot += 1
-        
-#         plt.subplot(1, tot_num_plots, cur_plot)
-#         plt.title('pred_dpt')
-#         plt.imshow(pred_dpt, cmap='gist_yarg')
-#         plt.grid("off");
-#         plt.axis("off");
-#         cur_plot += 1
-        
-#         plt.subplot(1, tot_num_plots, cur_plot)
-#         plt.title('render_dpt')
-#         plt.imshow(render_dpt, cmap='gist_yarg')
-#         plt.grid("off");
-#         plt.axis("off");
-#         cur_plot += 1
-        
-#         plt.subplot(1, tot_num_plots, cur_plot)
-#         plt.title('dpt_err')
-#         plt.imshow(dpt_err_map, cmap='rainbow')
-#         plt.grid("off");
-#         plt.axis("off");
-
-#         plt.show()
-        
-#         print(np.min(depth[depth>0]),np.max(depth))
         
         return rgb, rgb2, out_seg,out_seg2,pred_dpt, pred_dpt_with_init, depth_piror

@@ -42,4 +42,4 @@ Once trained, SOF could be used for generating free-view segmentation maps for a
 * We also provide `scripts\Test_GMM.ipynb` for miscs like fitting GMM model to the geometric space.
 
 # Acknowledgment
-Thanks [vsitzmann](https://github.com/vsitzmann) for sharing the awesome idea of [SRNs](https://github.com/vsitzmann/scene-representation-networks.git), which has greatly inspired our design of SOF.
+Thanks [vsitzmann](https://github.com/vsitzmann) for sharing the awesome idea of [SOF](https://github.com/vsitzmann/scene-representation-networks.git), which has greatly inspired our design of SOF.

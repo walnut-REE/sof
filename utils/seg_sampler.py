@@ -2,20 +2,21 @@ import sys
 import os
 import configargparse
 
-SRN_ROOT_DIR = '/home/anpei/liury/SRNs'
-sys.path.append(SRN_ROOT_DIR)
+SOF_ROOT_DIR = 'sofgan_test/modules/SOF'
+sys.path.append(SOF_ROOT_DIR)
 
 import torch
 import torch.nn
 import torch.nn.functional as F
 import numpy as np
 
-from modeling import SRNsModel
+from modeling import SOFModel
 from glob import glob
 
-_DEFAULT_MODEL_PATH = './logs/032315face_seg_2000_depth_ckpt/checkpoints/epoch_0018_iter_070000.pth'
-_DEFAULT_INT = '/data/anpei/facial-data/seg_face_2000/intrinsics.txt'
-
+_DEFAULT_MODEL_PATH = os.path.join(
+    SOF_ROOT_DIR, 'checkpoints/epoch_0018_iter_070000.pth')
+_DEFAULT_INT = os.path.join(
+    SOF_ROOT_DIR, 'data/intrinsics.txt')
 
 def _campos2matrix(cam_pos, cam_center=None, cam_up=None):
     _cam_target = np.asarray([0,0.11,0.1]).reshape((1, 3)) if cam_center is None else cam_center
@@ -36,6 +37,35 @@ def _campos2matrix(cam_pos, cam_center=None, cam_up=None):
     cam_P[:3, 3] = cam_pos
 
     return cam_P
+
+
+def _parse_intrinsics(filepath, trgt_sidelength=None, invert_y=False):
+    # Get camera intrinsics
+    with open(filepath, 'r') as file:
+        f, cx, cy, _ = map(float, file.readline().split())
+        file.readline()
+        scale = float(file.readline())
+        height, width = map(float, file.readline().split())
+
+    if trgt_sidelength is not None:
+        cx = cx/width * trgt_sidelength
+        cy = cy/height * trgt_sidelength
+        f = trgt_sidelength / height * f
+
+    fx = f
+    if invert_y:
+        fy = -f
+    else:
+        fy = f
+
+    # Build the intrinsic matrices
+    full_intrinsic = np.array([[fx, 0., cx, 0.],
+                               [0., fy, cy, 0],
+                               [0., 0, 1, 0],
+                               [0, 0, 0, 1]])
+
+    return full_intrinsic
+
 
 def _rand_cam_sphere(   R=1.5, 
                         num_samples=15, 
@@ -98,7 +128,8 @@ def _rand_cam_plane(R=1.2,
             y = _y[_cur_idx]
 
             cam2world.append(_campos2matrix(
-                np.array([x, y, R]+cam_center), (np.array([x, y, R-1.0])+np.array(cam_center)).reshape((1, 3))))
+                np.array([x, y, R]+cam_center), 
+                (np.array([x, y, R-1.0])+cam_center).reshape((1, 3))))
         _p *= -1
         _idx = _cur_idx
 
@@ -107,32 +138,72 @@ def _rand_cam_plane(R=1.2,
     return cam2world
 
 
-def parse_intrinsics(filepath, trgt_sidelength=None, invert_y=False):
-    # Get camera intrinsics
-    with open(filepath, 'r') as file:
-        f, cx, cy, _ = map(float, file.readline().split())
-        file.readline()
-        scale = float(file.readline())
-        height, width = map(float, file.readline().split())
+def _rand_cam_uniform(  R=1.2, 
+                        num_samples=15, 
+                        cam_center=None,
+                        sample_range=None):
+    
+    cam2world = []
+    
+    theta = []
+    _THETA_RANGE = sample_range if sample_range is not None else [-0.55, 0.55]
 
-    if trgt_sidelength is not None:
-        cx = cx/width * trgt_sidelength
-        cy = cy/height * trgt_sidelength
-        f = trgt_sidelength / height * f
+    for i in range(len(_THETA_RANGE)-1):
+        theta.append( np.linspace(
+            _THETA_RANGE[i],_THETA_RANGE[i+1], num=num_samples))
+        
+    ys = np.linspace(0.3,-0.2,5,endpoint=True)
+    
+    theta = np.concatenate(theta)
+    x = R*np.sin(theta)
+    z = R*np.cos(theta)
+    
+    for y in ys:        
+        cam_T = np.stack([x,np.ones_like(x)*y,z],axis=1) + cam_center.reshape((1,3))
+        for i in range(len(theta)):
+            cam_pose = _campos2matrix(cam_T[i], cam_center)
+            cam2world.append(cam_pose)        
+    
+    cam2world = np.asarray(cam2world)
+    return cam2world
 
-    fx = f
-    if invert_y:
-        fy = -f
-    else:
-        fy = f
 
-    # Build the intrinsic matrices
-    full_intrinsic = np.array([[fx, 0., cx, 0.],
-                               [0., fy, cy, 0],
-                               [0., 0, 1, 0],
-                               [0, 0, 0, 1]])
+def _rand_cam_spiral(   R=1.2, 
+                        num_samples=15, 
+                        cam_center=None,
+                        sample_range=None):
 
-    return full_intrinsic
+    cam2world = []
+
+    theta = []
+    _THETA_RANGE = sample_range if sample_range is not None else [0.0, -0.55, 0.55, 0.0]
+
+    for i in range(len(_THETA_RANGE)-1):
+        theta.append(np.linspace(
+            _THETA_RANGE[i],_THETA_RANGE[i+1], num=num_samples))
+
+    theta = np.concatenate(theta)
+    x = R*np.sin(theta)
+    y = np.zeros_like(x)
+    z = R*np.cos(theta)
+    cam_T = np.stack([x,y,z],axis=1) + cam_center.reshape((1,3))
+
+    vis_outputs,out_segs = [],[]
+    for i in range(len(theta)):
+        cam_pose = _campos2matrix(cam_T[i], cam_center)     
+        cam2world.append(cam_pose)   
+
+    # SPPIRAL PATH
+    t = np.linspace(0, 4*np.pi, num_samples*4, endpoint=True)
+    for k in range(len(t)):
+        cam_T = np.array([np.cos(t[k]), -np.sin(t[k]), -np.sin(0.5*t[k])]) * R
+        cam_T = cam_T[[1,2,0]] + cam_center
+        cam_pose = _campos2matrix(cam_T, cam_center)
+
+        cam2world.append(cam_pose)
+
+    cam2world = np.asarray(cam2world)
+    return cam2world
 
 
 def _get_random_poses(sample_radius, num_samples, mode, cam_center=None, cam_pos=None, sample_range=None):
@@ -144,10 +215,15 @@ def _get_random_poses(sample_radius, num_samples, mode, cam_center=None, cam_pos
         elif mode == 'plane':
             return _rand_cam_plane(
                 sample_radius, num_samples, cam_center=cam_center, sample_range=sample_range)
+        elif mode == 'spiral':
+            return _rand_cam_spiral(
+                sample_radius, num_samples, cam_center=cam_center, sample_range=sample_range)
+        elif mode == 'uniform':
+            return _rand_cam_uniform(
+                sample_radius, num_samples, cam_center=cam_center, sample_range=sample_range)
         else:
-            _DEFAULT_POSE = '/data/anpei/facial-data/seg_face_syn/779/cam2world.npy'
-            cam_pos = np.load(_DEFAULT_POSE)
-            cam_pos = cam_pos[:num_samples, :3, 3].squeeze()
+            raise ValueError('Unsupported camera path: %s, \
+                must be one in [sphere, plane, spiral, uniform].'%(mode))
     
     assert cam_pos is not None, 'Campose not specified'
     cam2world = []
@@ -198,7 +274,7 @@ class FaceSegSampler():
                     sample_mode='sphere',
                     sample_radius=1.2):
         super().__init__()
-        # init srn model
+        # init SOF model
         self.num_instances = num_instances
         self.num_poses = num_poses
         self.model_path = model_path
@@ -206,9 +282,9 @@ class FaceSegSampler():
         self.sample_radius = sample_radius
         self.img_size = img_size
 
-        self.model = SRNsModel(num_instances=self.num_instances,
+        self.model = SOFModel(num_instances=self.num_instances,
                                latent_dim=256,
-                               fit_single_srn=False,
+                               fit_single_SOF=False,
                                use_unet_renderer=False,
                                tracing_steps=10,
                                freeze_networks=True,
@@ -231,7 +307,7 @@ class FaceSegSampler():
         self.model.eval()
         self.model.cuda()
 
-        self.intrinsics = torch.Tensor(parse_intrinsics(
+        self.intrinsics = torch.Tensor(_parse_intrinsics(
             _DEFAULT_INT, 128)).float()
         
         self.uv = np.mgrid[0:128, 0:128].astype(np.int32)
@@ -260,7 +336,7 @@ class FaceSegSampler():
             if cam2world is not None:
                 cam2world = cam2world.repeat(num_samples, 1, 1)
             else:
-                cam2world = get_random_poses(
+                cam2world = _get_random_poses(
                     self.sample_radius, num_samples, self.sample_mode)
                 cam2world = torch.from_numpy(cam2world).float()
 
@@ -294,7 +370,7 @@ class FaceSegSampler():
 
                 emb = z_src * weight + z_trgt * (1.0 - weight)
             
-            cam2world = get_random_poses(self.sample_radius, num_samples, self.sample_mode)
+            cam2world = _get_random_poses(self.sample_radius, num_samples, self.sample_mode)
             cam2world = torch.from_numpy(cam2world).float()
 
             emb = emb.unsqueeze(0).repeat(num_samples, 1)
@@ -319,7 +395,7 @@ class FaceSegSampler():
     def sample_ins_fix_pose(self, num_samples=25, return_feat=False):
         """ Sample num_samples instances with fix camera pose
         """
-        cam2world = get_random_poses(
+        cam2world = _get_random_poses(
             self.sample_radius, 1, self.sample_mode)
         cam2world = torch.from_numpy(cam2world).float()
 

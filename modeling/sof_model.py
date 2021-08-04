@@ -41,7 +41,7 @@ def _campos2matrix(
     return R
 
 
-class SRNsModel(nn.Module):
+class SOFModel(nn.Module):
     def __init__(self,
                  num_instances,
                  latent_dim,
@@ -563,7 +563,7 @@ class SRNsModel(nn.Module):
             self.z = self.z[:, 3:]
 
         self.latent_reg_loss = torch.mean(self.z ** 2)
-        # Forward pass through hypernetwork yields a (callable) SRN.
+        # Forward pass through hypernetwork yields a (callable) SOF.
         phi = self.hyper_phi(self.z)
 
         # print('*** 2: ray_marcher.')
@@ -573,7 +573,7 @@ class SRNsModel(nn.Module):
 
 
         # self.z = z[:,None].expand(-1, uv.shape[1], -1)
-        # Raymarch SRN phi along rays defined by camera pose, intrinsics and uv coordinates.
+        # Raymarch SOF phi along rays defined by camera pose, intrinsics and uv coordinates.
         points_xyz, depth_maps, log = self.ray_marcher(cam2world=cam_pose,
                                                        intrinsics=intrinsics,
                                                        uv=uv,

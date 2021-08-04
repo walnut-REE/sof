@@ -1,2 +1,2 @@
 # from .sif import SIFModel
-from .srns import SRNsModel
+from .sof_model import SOFModel

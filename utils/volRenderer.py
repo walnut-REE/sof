@@ -66,7 +66,7 @@ def world_from_xy_depth(xy, depth, cam2world, intrinsics, orthogonal=False):
 
 
 
-def render_scene_cam(model, z, cam2world, cam_int, img_sidelength, dpt=None, cmap=_CMAP):
+def render_scene_cam(model, z, cam2world, cam_int, img_sidelength, output_sidelength=512, dpt=None, cmap=_CMAP):
     
     with torch.no_grad():
         pose = torch.from_numpy(cam2world).float().unsqueeze(0)
@@ -79,14 +79,17 @@ def render_scene_cam(model, z, cam2world, cam_int, img_sidelength, dpt=None, cma
         predictions, depth_maps = model(pose, z, cam_int, uv, dpt=dpt)
         predictions = predictions.view(1, img_sidelength, img_sidelength, -1)
         
-
-        predictions = F.interpolate(predictions.permute(0,3,1,2), size=(512, 512), mode='bilinear', align_corners=True).permute(0,2,3,1).view(1,-1,predictions.shape[-1])
+        predictions = F.interpolate(
+            predictions.permute(0,3,1,2), 
+            size=(output_sidelength, output_sidelength), 
+            mode='bilinear', 
+            align_corners=True).permute(0,2,3,1).view(1,-1,predictions.shape[-1])
         
         pred = torch.argmax(predictions, dim=2, keepdim=True)
         prob = F.softmax(predictions, dim=2)
 
         out_img = util.lin2img(pred, color_map=cmap).cpu().numpy()
-        out_seg = pred.view(512, 512, 1).cpu().numpy()
+        out_seg = pred.view(output_sidelength, output_sidelength, 1).cpu().numpy()
         
         depth_maps = depth_maps.view(img_sidelength, img_sidelength).cpu().numpy()
         
@@ -94,7 +97,7 @@ def render_scene_cam(model, z, cam2world, cam_int, img_sidelength, dpt=None, cma
         out_img = out_img.round().clip(0, 255).astype(np.uint8)
         out_seg = out_seg.squeeze().astype(np.uint8)
         
-        out_prob = prob.squeeze(0).view(512, 512, -1).cpu().numpy()
+        out_prob = prob.squeeze(0).view(output_sidelength, output_sidelength, -1).cpu().numpy()
     
         return out_img, out_seg, out_prob, depth_maps
     
@@ -121,29 +124,6 @@ def render_perp(mesh,intrinsics,cam=np.eye(4),model=np.eye(4),resolution=[512,51
     
     return color,depth
 
-# def render_perp(mesh, intrinsics, cam=np.eye(4), model=np.eye(4), resolution=[512,512]):
-        
-#     fx, cx, fy, cy = intrinsics[0,0], intrinsics[0,2], intrinsics[1,1], intrinsics[1,2]
-        
-#     obj = pyrender.Mesh.from_trimesh(mesh, smooth=True)
-    
-#     # compose scene
-#     scene = pyrender.Scene(ambient_light=[1.0, 1.0, 1.0], bg_color=[0, 0, 0])
-    
-#     camera = pyrender.IntrinsicsCamera(fx, fy, cx, cy)
-#     light = pyrender.DirectionalLight(color=[1.0, 1.0, 1.0], intensity=8)
-
-#     scene.add(obj, pose=model)
-#     scene.add(light, pose=model)
-#     scene.add(camera, pose=cam)
-
-#     # render scene
-#     r = pyrender.OffscreenRenderer(resolution[1], resolution[0])
-#     color, depth = r.render(scene)
-
-#     color,depth = color[::-1,::-1],depth[::-1,::-1]
-#     return color,depth
-
 
 def render_ortho(mesh, cam=np.eye(4), model=np.eye(4), scale=[1,1], resolution=[512, 512]):
 
@@ -160,9 +140,7 @@ def render_ortho(mesh, cam=np.eye(4), model=np.eye(4), scale=[1,1], resolution=[
     # render scene
     r = pyrender.OffscreenRenderer(resolution[1], resolution[0])
     color, depth = r.render(scene)
-    
-#     print(color.shape, depth.shape)
-        
+            
     return color, depth
 
 
@@ -243,7 +221,6 @@ class VolRender:
                               [7, 4], [0, 4], [1, 5], [2, 6], [7, 3]], dtype=np.int)
 
             # origin
-            
             scale = np.linalg.norm(ma - m) * 0.5
             v_origin = np.array([
                 [0., 0., 0.],

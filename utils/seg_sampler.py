@@ -9,35 +9,25 @@ import torch
 import torch.nn
 import torch.nn.functional as F
 import numpy as np
+from sklearn import mixture
+
+from utils.volRenderer import render_scene_cam
+from utils.common import custom_load
 
 from modeling import SOFModel
+from dataset.face_dataset import _campos2matrix
 from glob import glob
 
 
+_FOCAL = 36
+_IMG_SIZE = 128
+_OUT_SIZE = 512
 _DEFAULT_MODEL_PATH = os.path.join(
-    SOF_ROOT_DIR, 'checkpoints/epoch_0018_iter_070000.pth')
-_DEFAULT_INT = os.path.join(
-    SOF_ROOT_DIR, 'data/intrinsics.txt')
-
-
-def _campos2matrix(cam_pos, cam_center=None, cam_up=None):
-    _cam_target = np.asarray([0,0.11,0.1]).reshape((1, 3)) if cam_center is None else cam_center
-
-    _cam_up = np.asarray([0.0, 1.0, 0.0]) if cam_up is None else cam_up
-
-    cam_dir = (_cam_target-cam_pos)
-    cam_dir = cam_dir / np.linalg.norm(cam_dir)
-    cam_right = np.cross(cam_dir, _cam_up)
-    cam_right = cam_right / np.linalg.norm(cam_right)
-    cam_up = np.cross(cam_right, cam_dir)
-
-    cam_R = np.concatenate([cam_right.T, -cam_up.T, cam_dir.T], axis=1)
-
-    cam_P = np.eye(4)
-    cam_P[:3, :3] = cam_R
-    cam_P[:3, 3] = cam_pos
-
-    return cam_P
+    SOF_ROOT_DIR, 'checkpoints/epoch_0250_iter_050000.pth')
+_DEFAULT_INT = np.array(
+    [[_FOCAL,0,_IMG_SIZE//2],
+    [0,_FOCAL,_IMG_SIZE//2],
+    [0,0,1]])
 
 
 def _parse_intrinsics(filepath, trgt_sidelength=None, invert_y=False):
@@ -71,7 +61,8 @@ def _parse_intrinsics(filepath, trgt_sidelength=None, invert_y=False):
 def _rand_cam_sphere(   R=1.5, 
                         num_samples=15, 
                         random=False, 
-                        cam_center=None, 
+                        cam_center=None,
+                        look_at=None, 
                         sample_range=None):
     side_len = np.ceil(np.sqrt(num_samples)).astype(np.uint8)
     cam_pos = []
@@ -110,7 +101,8 @@ def _rand_cam_sphere(   R=1.5,
 
 def _rand_cam_plane(R=1.2, 
                     num_samples=15, 
-                    cam_center=None, 
+                    cam_center=None,
+                    look_at=None, 
                     sample_range=None):
     side_len = np.ceil(np.sqrt(num_samples)).astype(np.uint8)
     cam2world = []
@@ -143,6 +135,7 @@ def _rand_cam_plane(R=1.2,
 def _rand_cam_uniform(  R=1.2, 
                         num_samples=15, 
                         cam_center=None,
+                        look_at=None,
                         sample_range=None):
     
     cam2world = []
@@ -173,55 +166,65 @@ def _rand_cam_uniform(  R=1.2,
 def _rand_cam_spiral(   R=1.2, 
                         num_samples=15, 
                         cam_center=None,
+                        look_at=None,
                         sample_range=None):
 
     cam2world = []
 
+    # ROTATE
+    spiral_R = np.linalg.norm(cam_center-look_at) + R
+
     theta = []
-    _THETA_RANGE = sample_range if sample_range is not None else [0.0, -0.55, 0.55, 0.0]
-
-    for i in range(len(_THETA_RANGE)-1):
-        theta.append(np.linspace(
-            _THETA_RANGE[i],_THETA_RANGE[i+1], num=num_samples))
-
+    theta_range = [0.0, -0.45, 0.45, 0.0]
+    for i in range(len(theta_range)-1):
+        theta.append( np.linspace(theta_range[i],theta_range[i+1], num=num_samples))
     theta = np.concatenate(theta)
-    x = R*np.sin(theta)
+    x = spiral_R*np.sin(theta)
     y = np.zeros_like(x)
-    z = R*np.cos(theta)
-    cam_T = np.stack([x,y,z],axis=1) + cam_center.reshape((1,3))
+    z = spiral_R*np.cos(theta)
+    cam_T = np.stack([x,y,z],axis=1) + look_at.reshape((1,3))
 
-    vis_outputs,out_segs = [],[]
-    for i in range(len(theta)):
-        cam_pose = _campos2matrix(cam_T[i], cam_center)     
-        cam2world.append(cam_pose)   
-
-    # SPPIRAL PATH
-    t = np.linspace(0, 4*np.pi, num_samples*4, endpoint=True)
+     # SPPIRAL PATH
+    t = np.linspace(0, 4*np.pi, num_samples, endpoint=True)
     for k in range(len(t)):
         cam_T = np.array([np.cos(t[k]), -np.sin(t[k]), -np.sin(0.5*t[k])]) * R
         cam_T = cam_T[[1,2,0]] + cam_center
-        cam_pose = _campos2matrix(cam_T, cam_center)
-
+        cam_pose = _campos2matrix(cam_T, look_at)
         cam2world.append(cam_pose)
 
     cam2world = np.asarray(cam2world)
     return cam2world
 
 
-def _get_random_poses(sample_radius, num_samples, mode, cam_center=None, cam_pos=None, sample_range=None):
+def _get_random_poses(
+    sample_radius, num_samples, mode, 
+    cam_center=None, look_at=None, 
+    cam_pos=None, sample_range=None):
     if cam_pos is None:
         if mode == 'sphere':
             cam_pos = _rand_cam_sphere(
-                sample_radius, num_samples, cam_center=cam_center, sample_range=sample_range)            
+                sample_radius, num_samples, 
+                cam_center=cam_center, 
+                look_at=look_at, 
+                sample_range=sample_range)            
         elif mode == 'plane':
             return _rand_cam_plane(
-                sample_radius, num_samples, cam_center=cam_center, sample_range=sample_range)
+                sample_radius, num_samples, 
+                cam_center=cam_center, 
+                look_at=look_at, 
+                sample_range=sample_range)
         elif mode == 'spiral':
             return _rand_cam_spiral(
-                sample_radius, num_samples, cam_center=cam_center, sample_range=sample_range)
+                sample_radius, num_samples, 
+                cam_center=cam_center, 
+                look_at=look_at, 
+                sample_range=sample_range)
         elif mode == 'uniform':
             return _rand_cam_uniform(
-                sample_radius, num_samples, cam_center=cam_center, sample_range=sample_range)
+                sample_radius, num_samples, 
+                cam_center=cam_center, 
+                look_at=look_at, 
+                sample_range=sample_range)
         else:
             raise ValueError('Unsupported camera path: %s, \
                 must be one in [sphere, plane, spiral, uniform].'%(mode))
@@ -236,43 +239,13 @@ def _get_random_poses(sample_radius, num_samples, mode, cam_center=None, cam_pos
 
     return cam2world
 
-
-def load_model(model, path, discriminator=None, overwrite_embeddings=False, overwrite_renderer=False, optimizer=None):
-    if os.path.isdir(path):
-        checkpoint_path = sorted(glob(os.path.join(path, "*.pth")))[-1]
-    else:
-        checkpoint_path = path
-
-    whole_dict = torch.load(checkpoint_path)
-
-    if overwrite_embeddings:
-        del whole_dict['model']['latent_codes.weight']
-
-    if overwrite_renderer:
-        keys_to_remove = [
-            key for key in whole_dict['model'].keys() if 'rendering_net' in key]
-        for key in keys_to_remove:
-            print(key)
-            whole_dict['model'].pop(key, None)
-
-    state = model.state_dict()
-    state.update(whole_dict['model'])
-    model.load_state_dict(state)
-
-    if discriminator:
-        discriminator.load_state_dict(whole_dict['discriminator'])
-
-    if optimizer:
-        optimizer.load_state_dict(whole_dict['optimizer'])
-
-
 class FaceSegSampler():
     def __init__(   self,
                     model_path=_DEFAULT_MODEL_PATH,
                     img_size=64,
-                    num_instances=1494,
+                    num_instances=221,
                     num_poses=25,
-                    sample_mode='sphere',
+                    sample_mode='spiral',
                     sample_radius=1.2):
         super().__init__()
         # init SOF model
@@ -282,34 +255,39 @@ class FaceSegSampler():
         self.sample_mode = sample_mode
         self.sample_radius = sample_radius
         self.img_size = img_size
-
+        
         self.model = SOFModel(num_instances=self.num_instances,
-                               latent_dim=256,
-                               fit_single_SOF=False,
-                               use_unet_renderer=False,
-                               tracing_steps=10,
-                               freeze_networks=True,
-                               out_channels=19,
-                               img_sidelength=128,
-                               output_sidelength=self.img_size,
-                               )
+                              latent_dim=256,
+                              renderer='FC',
+                              tracing_steps=10,
+                              freeze_networks=True,
+                              out_channels=20,
+                              img_sidelength=128,
+                              output_sidelength=128,
+                              opt_cam=False,
+                              orthogonal=True
+                             )
 
         print('DONE Load model.')
-        print(torch.cuda.memory_allocated(torch.cuda.current_device()))
 
-        load_model(self.model,
+        custom_load(self.model,
                    path=self.model_path,
                    discriminator=None,
                    overwrite_embeddings=False)
         
         print('DONE Load ckpt.')
-        print(torch.cuda.memory_allocated(torch.cuda.current_device()))
 
         self.model.eval()
         self.model.cuda()
 
-        self.intrinsics = torch.Tensor(_parse_intrinsics(
-            _DEFAULT_INT, 128)).float()
+        num_comp = 16
+        self.gmm = mixture.GaussianMixture(
+            n_components=num_comp, covariance_type='full')
+        self.gmm.fit(self.model.latent_codes.weight.data.cpu().numpy())
+
+        print('DONE Build sampling space.')        
+
+        self.intrinsics = torch.from_numpy(_DEFAULT_INT).float().unsqueeze(0)
         
         self.uv = np.mgrid[0:128, 0:128].astype(np.int32)
         self.uv = torch.from_numpy(np.flip(self.uv, axis=0).copy()).long()
@@ -321,11 +299,9 @@ class FaceSegSampler():
             If cam2world is given, sample instances with the given pose.
         """
         with torch.no_grad():
-            src_idx, trgt_idx = torch.randint(
-                0, self.num_instances, (2, num_samples)).squeeze().cuda()
-
-            src_emb = self.model.latent_codes(src_idx)
-            trgt_emb = self.model.latent_codes(trgt_idx)
+            
+            src_emb = torch.from_numpy(self.gmm.sample(1)[0]).float()
+            trgt_emb = torch.from_numpy(self.gmm.sample(1)[0]).float()
 
             weights = torch.rand((num_samples,)).unsqueeze(1).to(src_emb.device)
 
@@ -343,6 +319,12 @@ class FaceSegSampler():
 
             predictions, _ = self.model(
                 cam2world, z_interp, intrinsics, uv)
+            predictions = predictions.view(num_samples, 128, 128, -1)
+            predictions = F.interpolate(
+                predictions.permute(0,3,1,2), 
+                size=(self.img_size, self.img_size), 
+                mode='bilinear', 
+                align_corners=True).permute(0,2,3,1).view(1,-1,predictions.shape[-1])
 
             N, H, W = num_samples, self.img_size, self.img_size
 
@@ -356,30 +338,34 @@ class FaceSegSampler():
         return pred
 
 
-    def sample_pose(self, num_samples=25, emb=None, return_feat=False):
+    def sample_pose(self, cam_center, look_at=None, num_samples=25, emb=None, return_feat=False):
         """ Sample num_samples random cameras for one instance
         """
         with torch.no_grad():
             if emb is None:
-                src_idx, trgt_idx = torch.randint(
-                    0, self.num_instances, (2,)).squeeze().cuda()
-
-                z_src = self.model.latent_codes(src_idx)
-                z_trgt = self.model.latent_codes(trgt_idx)
-
+                z_src = torch.from_numpy(self.gmm.sample(1)[0]).float()
+                z_trgt = torch.from_numpy(self.gmm.sample(1)[0]).float()
                 weight = torch.rand((1,)).to(z_src.device)
 
                 emb = z_src * weight + z_trgt * (1.0 - weight)
-            
-            cam2world = _get_random_poses(self.sample_radius, num_samples, self.sample_mode)
+
+            cam2world = _get_random_poses(
+                self.sample_radius, num_samples, self.sample_mode,
+                cam_center=cam_center, look_at=look_at)
             cam2world = torch.from_numpy(cam2world).float()
 
-            emb = emb.unsqueeze(0).repeat(num_samples, 1)
+            emb = emb.repeat(num_samples, 1)
             intrinsics = self.intrinsics.repeat(num_samples, 1, 1)
             uv = self.uv.repeat(num_samples, 1, 1)
 
             predictions, _ = self.model(
                 cam2world, emb, intrinsics, uv)
+            predictions = predictions.view(num_samples, 128, 128, -1)
+            predictions = F.interpolate(
+                predictions.permute(0,3,1,2), 
+                size=(self.img_size, self.img_size), 
+                mode='bilinear', 
+                align_corners=True).permute(0,2,3,1).view(1,-1,predictions.shape[-1])
 
             N, H, W = num_samples, self.img_size, self.img_size
 
@@ -418,6 +404,10 @@ if __name__ == "__main__":
     # sampling
     smp_ins = sampler.sample_ins(_NUM_SAMPLES)
     print('Sampling ', smp_ins.shape)
-    print(torch.cuda.memory_allocated(device))  
-    smp_pose = sampler.sample_pose(_NUM_SAMPLES)
+    print(torch.cuda.memory_allocated(device))
+
+    look_at = np.asarray([0, 0.1, 0.0])
+    cam_center =  np.asarray([0, 0.1, 4.5])
+    smp_pose = sampler.sample_pose(cam_center, look_at, _NUM_SAMPLES)
+
     smp_pose = sampler.sample_ins_fix_pose(_NUM_SAMPLES)

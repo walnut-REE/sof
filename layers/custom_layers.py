@@ -83,7 +83,7 @@ class Raymarcher(nn.Module):
 
         self.dir_channels = 63
         self.lstm = hyperlayers.Linear(
-            self.n_feature_channels, 1, 3, hidden_layer=6)
+            self.n_feature_channels, 1, 3, hidden_layer=3)
 
         self.counter = 0
 
@@ -122,7 +122,6 @@ class Raymarcher(nn.Module):
         log = list()
 
         orthogonal = self.orthogonal if orthogonal is None else orthogonal
-        # print('*** dpt_scale = ', dpt_scale)
 
         ray_dirs = geometry.get_ray_directions(uv,
                                                cam2world=cam2world,
@@ -302,8 +301,6 @@ class ImAEDecoder(nn.Module):
             in_feat = in_feat[:, 3:]
             in_feat = torch.cat([pts, in_feat], dim=-1)
 
-        # print('*** in_feat = ', in_feat.shape)
-
         l1 = self.linear_1(in_feat)
         l1 = F.leaky_relu(l1, negative_slope=0.02, inplace=True)
 
@@ -325,8 +322,6 @@ class ImAEDecoder(nn.Module):
         l7 = self.linear_7(l6)
 
         l7 = l7.view(B, L, self.out_dim)
-
-        # print('*** out_feat = ', l7.shape)
 
         return l7
 

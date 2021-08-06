@@ -80,9 +80,7 @@ class SegEncoder(nn.Module):
 
     def forward(self, x):
         seg = x
-        # print('**** seg = ', seg.shape)
         seg = F.one_hot(seg.squeeze().long(), num_classes=self.num_classes).permute(0, 2, 1)
-        # print('**** seg_one_hot = ', seg.shape)
 
         seg = seg.view(-1, self.num_classes, self.img_sidelength, self.img_sidelength).float()
 
@@ -90,13 +88,7 @@ class SegEncoder(nn.Module):
         gamma = self._gamma(embedding).squeeze()
         beta = self._beta(embedding).squeeze()
 
-        # print('*** gamma = ', gamma.shape)
-        # print('*** beta = ', beta.shape)
-
         out = self.shortcut * (1 + gamma) + beta
-
-        # print('**** out = ', out.shape)
-
         return out
 
 class ConvEncoder(nn.Module):

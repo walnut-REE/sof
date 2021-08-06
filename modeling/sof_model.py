@@ -145,8 +145,6 @@ class SOFModel(nn.Module):
                                                     raymarch_steps=self.sphere_trace_steps,
                                                     orthogonal=self.orthogonal)
 
-        # self.positionEncoder = custom_layers.PosEncodingNeRF(3)
-
         self.renderer = renderer
         if renderer == 'Deepvoxels':
             print('[INIT renderer] Deepvoxels, with renderer = %s' % (renderer))

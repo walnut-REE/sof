@@ -29,6 +29,7 @@ def _id_remapping(seg):
     """
     remap_list = np.array([0,1,2,2,3,3,4,5,6,7,8,9,9,10,11,12,13,14,15,16])
     return remap_list[seg.astype(np.uint8)]
+    
 
 def _campos2matrix(cam_pos, cam_center=None, cam_up=None):
     _cam_target = np.asarray([0,0.11,0.1]) if cam_center is None else cam_center
@@ -49,6 +50,7 @@ def _campos2matrix(cam_pos, cam_center=None, cam_up=None):
     cam_P[:3, 3] = cam_pos
 
     return cam_P
+
 
 def _rand_cam_spiral(R=1.0, num_samples=100):
     _v = 1.0

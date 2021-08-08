@@ -2,8 +2,8 @@ import sys
 import os
 import configargparse
 
-SOF_ROOT_DIR = 'sofgan_test/modules/SOF'
-sys.path.append(SOF_ROOT_DIR)
+SOF_ROOT_DIR = os.path.join(
+    '..', os.path.dirname(__file__))
 
 import torch
 import torch.nn
@@ -11,11 +11,11 @@ import torch.nn.functional as F
 import numpy as np
 from sklearn import mixture
 
-from utils.volRenderer import render_scene_cam
-from utils.common import custom_load
+from .volRenderer import render_scene_cam
+from .common import custom_load
 
-from modeling import SOFModel
-from dataset.face_dataset import _campos2matrix
+from ..modeling import SOFModel
+from ..dataset.face_dataset import _campos2matrix
 from glob import glob
 
 

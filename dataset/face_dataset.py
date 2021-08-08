@@ -6,9 +6,9 @@ from glob import glob
 import random
 
 import cv2
-from dataset import data_util
 
-import utils.common as util
+from . import data_util
+from ..utils import common as util
 
 
 _COLOR_MAP = np.asarray([[0, 0, 0], [204, 0, 0], [76, 153, 0], [204, 204, 0], 

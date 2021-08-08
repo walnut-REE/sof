@@ -1,7 +1,7 @@
 '''Pytorch implementations of hyper-network modules.'''
 import torch
 import torch.nn as nn
-from layers.pytorch_prototyping import FCBlock
+from .pytorch_prototyping import FCBlock
 import functools
 
 

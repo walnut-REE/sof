@@ -6,16 +6,16 @@ import numpy as np
 import bisect
 
 import torchvision
-import utils.common as util
+from ..utils import common as util
 
 import skimage.measure
 from torch.nn import functional as F
 
 
-from layers.pytorch_prototyping import *
-from layers import custom_layers
-from layers import geometry
-from layers import hyperlayers
+from ..layers.pytorch_prototyping import *
+from ..layers import custom_layers
+from ..layers import geometry
+from ..layers import hyperlayers
 
 _CAM_CENTER = (0., 0.0, 1.1)
 _OBJ_CENTER = (0., 0.0, 0.1)

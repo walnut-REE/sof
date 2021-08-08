@@ -2,7 +2,7 @@ import numpy as np
 import torch
 
 from torch.nn import functional as F
-import utils.common as util
+from ..utils import common as util
 
 def compute_normal_map(x_img, y_img, z, intrinsics, orthogonal=False):
     cam_coords = lift(x_img, y_img, z, intrinsics, orthogonal=orthogonal)

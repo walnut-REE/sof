@@ -1,16 +1,16 @@
 import torchvision
-import utils.common as util
+from ..utils import common as util
 
-from layers.pytorch_prototyping import Unet, UpsamplingNet, Conv2dSame
-from layers.dimension_kernel import Trigonometric_kernel
-import layers.geometry as geometry
+from .pytorch_prototyping import Unet, UpsamplingNet, Conv2dSame
+from .dimension_kernel import Trigonometric_kernel
+from . import geometry
 
 import torch
 from torch import nn
 import torch.nn.functional as F
 
 import numbers
-from layers import hyperlayers
+from . import hyperlayers
 from torch.autograd import Variable
 
 

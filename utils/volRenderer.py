@@ -6,8 +6,7 @@ import os, sys
 import numbers
 import numpy as np
 
-sys.path.append('..')
-import util
+from .common import lin2img
 
 from skimage.measure import marching_cubes
 
@@ -88,7 +87,7 @@ def render_scene_cam(model, z, cam2world, cam_int, img_sidelength, output_sidele
         pred = torch.argmax(predictions, dim=2, keepdim=True)
         prob = F.softmax(predictions, dim=2)
 
-        out_img = util.lin2img(pred, color_map=cmap).cpu().numpy()
+        out_img = lin2img(pred, color_map=cmap).cpu().numpy()
         out_seg = pred.view(output_sidelength, output_sidelength, 1).cpu().numpy()
         
         depth_maps = depth_maps.view(img_sidelength, img_sidelength).cpu().numpy()

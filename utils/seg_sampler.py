@@ -9,8 +9,8 @@ import torch.nn
 import torch.nn.functional as F
 import numpy as np
 from sklearn import mixture
+import math
 
-from .volRenderer import render_scene_cam
 from .common import custom_load
 
 from ..modeling import SOFModel
@@ -27,34 +27,6 @@ _DEFAULT_INT = np.array(
     [[_FOCAL,0,_IMG_SIZE//2],
     [0,_FOCAL,_IMG_SIZE//2],
     [0,0,1]])
-
-
-def _parse_intrinsics(filepath, trgt_sidelength=None, invert_y=False):
-    # Get camera intrinsics
-    with open(filepath, 'r') as file:
-        f, cx, cy, _ = map(float, file.readline().split())
-        file.readline()
-        scale = float(file.readline())
-        height, width = map(float, file.readline().split())
-
-    if trgt_sidelength is not None:
-        cx = cx/width * trgt_sidelength
-        cy = cy/height * trgt_sidelength
-        f = trgt_sidelength / height * f
-
-    fx = f
-    if invert_y:
-        fy = -f
-    else:
-        fy = f
-
-    # Build the intrinsic matrices
-    full_intrinsic = np.array([[fx, 0., cx, 0.],
-                               [0., fy, cy, 0],
-                               [0., 0, 1, 0],
-                               [0, 0, 0, 1]])
-
-    return full_intrinsic
 
 
 def _rand_cam_sphere(   R=1.5,
@@ -241,11 +213,12 @@ def _get_random_poses(
 class FaceSegSampler():
     def __init__(   self,
                     model_path=_DEFAULT_MODEL_PATH,
-                    img_size=64,
+                    img_size=128,
                     num_instances=221,
                     num_poses=25,
                     sample_mode='spiral',
-                    sample_radius=1.2):
+                    sample_radius=1.2,
+                    max_batch_size=32):
         super().__init__()
         # init SOF model
         self.num_instances = num_instances
@@ -254,6 +227,7 @@ class FaceSegSampler():
         self.sample_mode = sample_mode
         self.sample_radius = sample_radius
         self.img_size = img_size
+        self.batch_size = max_batch_size
 
         self.model = SOFModel(num_instances=self.num_instances,
                               latent_dim=256,
@@ -293,48 +267,107 @@ class FaceSegSampler():
         self.uv = self.uv.reshape(2, -1).transpose(1, 0)
 
 
-    def sample_ins(self, num_samples=100, cam2world=None, return_feat=False):
-        """ Sample num_samples random cameras for random instance.
-            If cam2world is given, sample instances with the given pose.
+    def interp_ins(self, src_emb, trgt_emb, num_samples, cam2world, return_feat=False):
+        """ Sample num_samples random cameras for one instance
+        """
+        with torch.no_grad():
+            
+            return_num_samples = num_samples
+            num_samples = math.ceil(num_samples/self.batch_size)*self.batch_size
+
+            if isinstance(src_emb, np.ndarray): src_emb = torch.from_numpy(src_emb).float()
+            if isinstance(trgt_emb, np.ndarray): trgt_emb = torch.from_numpy(trgt_emb).float()
+
+            weights = torch.linspace(0., 1., num_samples).unsqueeze(1)
+            print('*** embs = ', src_emb.shape, trgt_emb.shape, weights.shape)
+            emb = src_emb*weights + (1.-weights)*trgt_emb
+            
+
+            if isinstance(cam2world, np.ndarray):
+                cam2world = torch.from_numpy(cam2world).float()
+            if len(cam2world.shape) == 2:
+                cam2world = cam2world.unsqueeze(0)
+
+            cam2world = cam2world.repeat(self.batch_size, 1, 1)
+            intrinsics = self.intrinsics.repeat(self.batch_size, 1, 1)
+            uv = self.uv.repeat(self.batch_size, 1, 1)
+
+            batch_preds = []
+
+            for batch_idx in range(0, math.ceil(num_samples/self.batch_size)*self.batch_size, self.batch_size):
+                
+                predictions, _ = self.model(
+                    cam2world, emb[batch_idx:batch_idx+self.batch_size], intrinsics, uv)
+                predictions = predictions.view(self.batch_size, 128, 128, -1)
+                predictions = F.interpolate(
+                    predictions.permute(0,3,1,2),
+                    size=(self.img_size, self.img_size),
+                    mode='bilinear',
+                    align_corners=True).permute(0,2,3,1).view(1,-1,predictions.shape[-1])
+
+                N, H, W = self.batch_size, self.img_size, self.img_size
+
+                if return_feat:
+                    pred = F.log_softmax(predictions, dim=2).permute(0, 2, 1).view(
+                        N, -1, H, W).cpu()
+                else:
+                    pred = torch.argmax(predictions, dim=2, keepdim=True).permute(0, 2, 1).view(
+                        N, 1, H, W).cpu()
+
+                batch_preds.append(pred)
+
+            pred = torch.cat(batch_preds, dim=0)[:return_num_samples].numpy()
+
+            return pred
+
+
+    def sample_ins(self, num_samples, cam2world, return_feat=False):
+        """ Sample num_samples random instances from geometric sampling space.
         """
         with torch.no_grad():
 
-            src_emb = torch.from_numpy(self.gmm.sample(1)[0]).float()
-            trgt_emb = torch.from_numpy(self.gmm.sample(1)[0]).float()
+            return_num_samples = num_samples
+            num_samples = math.ceil(num_samples/self.batch_size)*self.batch_size
 
-            weights = torch.rand((num_samples,)).unsqueeze(1).to(src_emb.device)
+            emb = torch.from_numpy(self.gmm.sample(num_samples)[0]).float()
+            print('*** emb = ', emb.shape)
 
-            z_interp = (src_emb * weights + trgt_emb * (1.0 - weights))
-
-            intrinsics = self.intrinsics.repeat(num_samples, 1, 1)
-            uv = self.uv.repeat(num_samples, 1, 1)
-
-            if cam2world is not None:
-                cam2world = cam2world.repeat(num_samples, 1, 1)
-            else:
-                cam2world = _get_random_poses(
-                    self.sample_radius, num_samples, self.sample_mode)
+            if isinstance(cam2world, np.ndarray):
                 cam2world = torch.from_numpy(cam2world).float()
+            if len(cam2world.shape) == 2:
+                cam2world = cam2world.unsqueeze(0)
 
-            predictions, _ = self.model(
-                cam2world, z_interp, intrinsics, uv)
-            predictions = predictions.view(num_samples, 128, 128, -1)
-            predictions = F.interpolate(
-                predictions.permute(0,3,1,2),
-                size=(self.img_size, self.img_size),
-                mode='bilinear',
-                align_corners=True).permute(0,2,3,1).view(1,-1,predictions.shape[-1])
+            cam2world = cam2world.repeat(self.batch_size, 1, 1)
+            intrinsics = self.intrinsics.repeat(self.batch_size, 1, 1)
+            uv = self.uv.repeat(self.batch_size, 1, 1)
 
-            N, H, W = num_samples, self.img_size, self.img_size
+            batch_preds = []
 
-            if return_feat:
-                pred = F.log_softmax(predictions, dim=2).permute(0, 2, 1).view(
-                    N, -1, H, W).cpu().numpy()
-            else:
-                pred = torch.argmax(predictions, dim=2, keepdim=True).permute(0, 2, 1).view(
-                    N, 1, H, W).cpu().numpy()
+            for batch_idx in range(0, math.ceil(num_samples/self.batch_size)*self.batch_size, self.batch_size):
+                
+                predictions, _ = self.model(
+                    cam2world, emb[batch_idx:batch_idx+self.batch_size], intrinsics, uv)
+                predictions = predictions.view(self.batch_size, 128, 128, -1)
+                predictions = F.interpolate(
+                    predictions.permute(0,3,1,2),
+                    size=(self.img_size, self.img_size),
+                    mode='bilinear',
+                    align_corners=True).permute(0,2,3,1).view(1,-1,predictions.shape[-1])
 
-        return pred
+                N, H, W = self.batch_size, self.img_size, self.img_size
+
+                if return_feat:
+                    pred = F.log_softmax(predictions, dim=2).permute(0, 2, 1).view(
+                        N, -1, H, W).cpu()
+                else:
+                    pred = torch.argmax(predictions, dim=2, keepdim=True).permute(0, 2, 1).view(
+                        N, 1, H, W).cpu()
+
+                batch_preds.append(pred)
+
+            pred = torch.cat(batch_preds, dim=0)[:return_num_samples].numpy()
+
+            return pred
 
 
     def sample_pose(self, cam_center, look_at=None, num_samples=25, emb=None, return_feat=False):
@@ -342,38 +375,46 @@ class FaceSegSampler():
         """
         with torch.no_grad():
             if emb is None:
-                z_src = torch.from_numpy(self.gmm.sample(1)[0]).float()
-                z_trgt = torch.from_numpy(self.gmm.sample(1)[0]).float()
-                weight = torch.rand((1,)).to(z_src.device)
+                emb = torch.from_numpy(self.gmm.sample(1)[0]).float()
 
-                emb = z_src * weight + z_trgt * (1.0 - weight)
+            return_num_samples = num_samples
+            num_samples = math.ceil(num_samples/self.batch_size)*self.batch_size
 
             cam2world = _get_random_poses(
                 self.sample_radius, num_samples, self.sample_mode,
                 cam_center=cam_center, look_at=look_at)
             cam2world = torch.from_numpy(cam2world).float()
+            print('*** cam2world = ', cam2world.shape)
 
-            emb = emb.repeat(num_samples, 1)
-            intrinsics = self.intrinsics.repeat(num_samples, 1, 1)
-            uv = self.uv.repeat(num_samples, 1, 1)
+            emb = emb.repeat(self.batch_size, 1)
+            intrinsics = self.intrinsics.repeat(self.batch_size, 1, 1)
+            uv = self.uv.repeat(self.batch_size, 1, 1)
 
-            predictions, _ = self.model(
-                cam2world, emb, intrinsics, uv)
-            predictions = predictions.view(num_samples, 128, 128, -1)
-            predictions = F.interpolate(
-                predictions.permute(0,3,1,2),
-                size=(self.img_size, self.img_size),
-                mode='bilinear',
-                align_corners=True).permute(0,2,3,1).view(1,-1,predictions.shape[-1])
+            batch_preds = []
 
-            N, H, W = num_samples, self.img_size, self.img_size
+            for batch_idx in range(0, num_samples, self.batch_size):
+                
+                predictions, _ = self.model(
+                    cam2world[batch_idx:batch_idx+self.batch_size], emb, intrinsics, uv)
+                predictions = predictions.view(self.batch_size, 128, 128, -1)
+                predictions = F.interpolate(
+                    predictions.permute(0,3,1,2),
+                    size=(self.img_size, self.img_size),
+                    mode='bilinear',
+                    align_corners=True).permute(0,2,3,1).view(1,-1,predictions.shape[-1])
 
-            if return_feat:
-                pred = F.log_softmax(predictions, dim=2).permute(0, 2, 1).view(
-                    N, -1, H, W).cpu().numpy()
-            else:
-                pred = torch.argmax(predictions, dim=2, keepdim=True).permute(0, 2, 1).view(
-                    N, 1, H, W).cpu().numpy()
+                N, H, W = self.batch_size, self.img_size, self.img_size
+
+                if return_feat:
+                    pred = F.log_softmax(predictions, dim=2).permute(0, 2, 1).view(
+                        N, -1, H, W).cpu()
+                else:
+                    pred = torch.argmax(predictions, dim=2, keepdim=True).permute(0, 2, 1).view(
+                        N, 1, H, W).cpu()
+
+                batch_preds.append(pred)
+
+            pred = torch.cat(batch_preds, dim=0)[:return_num_samples].numpy()
 
             return pred
 

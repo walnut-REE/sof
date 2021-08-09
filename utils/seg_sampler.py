@@ -142,27 +142,28 @@ def _rand_cam_spiral(   R=1.2,
 
     cam2world = []
 
-    # ROTATE
-    spiral_R = np.linalg.norm(cam_center-look_at) + R
-
+    # linear rotate
+    linear_R = np.linalg.norm(cam_center-look_at) + R
     theta = []
-    theta_range = [0.0, -0.45, 0.45, 0.0]
+    theta_range = [0.0, -0.55, 0.0, 0.55, 0.0]
     for i in range(len(theta_range)-1):
-        theta.append( np.linspace(theta_range[i],theta_range[i+1], num=num_samples))
+        theta.append( np.linspace(theta_range[i],theta_range[i+1], num=num_samples//8))
     theta = np.concatenate(theta)
-    x = spiral_R*np.sin(theta)
+    x = linear_R*np.sin(theta)
     y = np.zeros_like(x)
-    z = spiral_R*np.cos(theta)
+    z = linear_R*np.cos(theta)
     cam_T = np.stack([x,y,z],axis=1) + look_at.reshape((1,3))
+    for i in range(len(theta)):
+        cam2world.append(_campos2matrix(cam_T[i], look_at))
 
-     # SPPIRAL PATH
-    t = np.linspace(0, 4*np.pi, num_samples, endpoint=True)
+     # spiral rotate
+    t = np.linspace(0, 4*np.pi, num_samples//2, endpoint=True)
+    spiral_R = np.asarray([R-0.2, R, R-0.2]) / 2
     for k in range(len(t)):
-        cam_T = np.array([np.cos(t[k]), -np.sin(t[k]), -np.sin(0.5*t[k])]) * R
+        cam_T = np.array([np.cos(t[k]), -np.sin(t[k]), -np.sin(0.5*t[k])]) * spiral_R
         cam_T = cam_T[[1,2,0]] + cam_center
-        cam_pose = _campos2matrix(cam_T, look_at)
-        cam2world.append(cam_pose)
-
+        cam2world.append(_campos2matrix(cam_T, look_at))
+    
     cam2world = np.asarray(cam2world)
     return cam2world
 
@@ -279,7 +280,6 @@ class FaceSegSampler():
             if isinstance(trgt_emb, np.ndarray): trgt_emb = torch.from_numpy(trgt_emb).float()
 
             weights = torch.linspace(0., 1., num_samples).unsqueeze(1)
-            print('*** embs = ', src_emb.shape, trgt_emb.shape, weights.shape)
             emb = src_emb*weights + (1.-weights)*trgt_emb
             
 
@@ -316,7 +316,8 @@ class FaceSegSampler():
 
                 batch_preds.append(pred)
 
-            pred = torch.cat(batch_preds, dim=0)[:return_num_samples].numpy()
+            pred = torch.cat(batch_preds, dim=0).squeeze(1)
+            pred = pred[:return_num_samples].numpy()
 
             return pred
 
@@ -330,7 +331,6 @@ class FaceSegSampler():
             num_samples = math.ceil(num_samples/self.batch_size)*self.batch_size
 
             emb = torch.from_numpy(self.gmm.sample(num_samples)[0]).float()
-            print('*** emb = ', emb.shape)
 
             if isinstance(cam2world, np.ndarray):
                 cam2world = torch.from_numpy(cam2world).float()
@@ -365,7 +365,8 @@ class FaceSegSampler():
 
                 batch_preds.append(pred)
 
-            pred = torch.cat(batch_preds, dim=0)[:return_num_samples].numpy()
+            pred = torch.cat(batch_preds, dim=0).squeeze(1)
+            pred = pred[:return_num_samples].numpy()
 
             return pred
 
@@ -378,13 +379,12 @@ class FaceSegSampler():
                 emb = torch.from_numpy(self.gmm.sample(1)[0]).float()
 
             return_num_samples = num_samples
-            num_samples = math.ceil(num_samples/self.batch_size)*self.batch_size
+            num_samples = math.ceil((num_samples-1)/self.batch_size)*self.batch_size
 
             cam2world = _get_random_poses(
                 self.sample_radius, num_samples, self.sample_mode,
                 cam_center=cam_center, look_at=look_at)
             cam2world = torch.from_numpy(cam2world).float()
-            print('*** cam2world = ', cam2world.shape)
 
             emb = emb.repeat(self.batch_size, 1)
             intrinsics = self.intrinsics.repeat(self.batch_size, 1, 1)
@@ -414,7 +414,8 @@ class FaceSegSampler():
 
                 batch_preds.append(pred)
 
-            pred = torch.cat(batch_preds, dim=0)[:return_num_samples].numpy()
+            pred = torch.cat(batch_preds, dim=0).squeeze(1)
+            pred = pred[:return_num_samples].numpy()
 
             return pred
 

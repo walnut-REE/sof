@@ -295,9 +295,9 @@ class FaceSegSampler():
             if len(cam2world.shape) == 2:
                 cam2world = cam2world.unsqueeze(0)
 
-            cam2world = cam2world.expand(self.batch_size, 1, 1)
-            intrinsics = self.intrinsics.expand(self.batch_size, 1, 1)
-            uv = self.uv.expand(self.batch_size, 1, 1)
+            cam2world = cam2world.expand(self.batch_size, -1, -1)
+            intrinsics = self.intrinsics.expand(self.batch_size, -1, -1)
+            uv = self.uv.expand(self.batch_size, -1, -1)
 
             batch_preds = []
 
@@ -344,9 +344,9 @@ class FaceSegSampler():
             if len(cam2world.shape) == 2:
                 cam2world = cam2world.unsqueeze(0)
 
-            cam2world = cam2world.expand(self.batch_size, 1, 1)
-            intrinsics = self.intrinsics.expand(self.batch_size, 1, 1)
-            uv = self.uv.expand(self.batch_size, 1, 1)
+            cam2world = cam2world.expand(self.batch_size, -1, -1)
+            intrinsics = self.intrinsics.expand(self.batch_size, -1, -1)
+            uv = self.uv.expand(self.batch_size, -1, -1)
 
             batch_preds = []
 
@@ -393,9 +393,9 @@ class FaceSegSampler():
                 cam_center=cam_center, look_at=look_at)
             cam2world = torch.from_numpy(cam2world).float()
 
-            emb = emb.expand(self.batch_size, 1)
-            intrinsics = self.intrinsics.expand(self.batch_size, 1, 1)
-            uv = self.uv.expand(self.batch_size, 1, 1)
+            emb = emb.expand(self.batch_size, -1)
+            intrinsics = self.intrinsics.expand(self.batch_size, -1, -1)
+            uv = self.uv.expand(self.batch_size, -1, -1)
 
             batch_preds = []
 

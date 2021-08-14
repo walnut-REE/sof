@@ -3,7 +3,6 @@ import torch
 import numpy as np
 from glob import glob
 import data_util
-from ..utils import common as util
 
 
 def pick(list, item_idcs):

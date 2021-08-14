@@ -1,14 +1,10 @@
 import os
-from pathlib import Path
 import torch
 import numpy as np
 from glob import glob
 import random
 
-import cv2
-
 from . import data_util
-from ..utils import common as util
 
 
 _COLOR_MAP = np.asarray([[0, 0, 0], [204, 0, 0], [76, 153, 0], [204, 204, 0], 
@@ -213,11 +209,13 @@ class FaceInstanceDataset():
                 self.intrinsics = np.load(intrinsics)
             except ValueError:
                 self.intrinsics = np.load(intrinsics, allow_pickle=True).item()
-
         elif isinstance(intrinsics, (np.ndarray, np.generic)):
             self.intrinsics = intrinsics
         else:
             raise ValueError('Invalid intrinsics.')
+
+        if len(self.intrinsics) == 1 or len(self.intrinsics.shape) == 2:
+            self.intrinsics = self.intrinsics.reshape((1, 3, 3)).repeat(len(self.color_paths), axis=0)
 
         self.z_range = None
         z_range_fp = os.path.join(self.data_root, 'zRange.npy')
@@ -364,7 +362,7 @@ class FaceClassDataset(torch.utils.data.Dataset):
                  ckpt_dir='',
                  data_type='seg',
                  cam2world_fp='cam2world.npy',
-                 intrinsics_fp='intrinsics.npy',
+                 intrinsics_fp='intrinsic.npy',
                  img_sidelength=None,
                  sample_instances=None,
                  sample_observations=None,

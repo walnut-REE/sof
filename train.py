@@ -1,29 +1,26 @@
 import configargparse
-import os
-import time
-import datetime
-
-import torch
-from torch.utils.tensorboard import SummaryWriter
-import numpy as np
-
-import dataset
-
-from torch.utils.data import DataLoader
-from modeling import SOFModel
-import utils.common as util
+import os, sys
+from datetime import datetime
 
 import random
 import re
 import shutil
 
+import numpy as np
 
-from datetime import datetime
+import torch
+from torch.utils.tensorboard import SummaryWriter
+from torch.utils.data import DataLoader
 
-_HOME_DIR = os.getenv("HOME")
+_HOME_DIR = os.path.join('..', os.path.dirname(__file__))
+sys.path.append(_HOME_DIR)
 
-_NUM_OBSERVATIONS = 25
+from sof import dataset
+from sof.modeling import SOFModel
+from sof.utils import common as util
 
+
+_DEFAULT_NUM_OBSERVATIONS = 25
 
 def _parse_num_range(s):
     '''Accept either a comma separated list of numbers 'a,b,c' or a range 'a-c' and return as a list of ints.'''
@@ -65,9 +62,10 @@ p.add_argument('--dataset_train', type=str, default='FaceClassDataset',
                help='Specify training dataset classes.')
 p.add_argument('--dataset_val', type=str, default='FaceClassDataset',
                help='Specify validation dataset classes.')
-p.add_argument('--data_root', type=str, default='/data/anpei/facial-data/seg_face_8000',
+
+p.add_argument('--data_root', type=str, default='./data',
                help='Path to directory with training data.')
-p.add_argument('--logging_root', type=str, default=_HOME_DIR+'/liury/log/SOF',
+p.add_argument('--logging_root', type=str, default='./log',
                required=False, help='path to directory where checkpoints & tensorboard events will be saved.')
 p.add_argument('--data_type', type=str, default='seg',
                help='Identifier to image files.')
@@ -162,7 +160,7 @@ def train():
 
     if opt.sample_observations_train == [-1]:
         opt.sample_observations_train = [
-            random.choice(list(range(_NUM_OBSERVATIONS)))]
+            random.choice(list(range(_DEFAULT_NUM_OBSERVATIONS)))]
 
     if opt.checkpoint_path is not None:
         idx_fp = os.path.join(opt.checkpoint_path, '..', 'indexing.txt')
@@ -170,6 +168,7 @@ def train():
             shutil.copy(idx_fp, os.path.join(opt.data_root, 'indexing.txt'))
 
     # get dataset
+    print('Loading train data for [%s]: %s.'%(opt.dataset_train, opt.data_root))
     data_ckpt_dir = os.path.join(opt.checkpoint_path, '..', '..') if (opt.checkpoint_path and not opt.overwrite_embeddings) else log_dir
     train_dataset = getattr(dataset, opt.dataset_train)(
         root_dir=opt.data_root,
@@ -190,9 +189,10 @@ def train():
 
         if opt.sample_observations_val is None:
             opt.sample_observations_val = list(
-                set(range(_NUM_OBSERVATIONS)) - set(opt.sample_observations_train))
+                set(range(_DEFAULT_NUM_OBSERVATIONS)) - set(opt.sample_observations_train))
 
-        val_dataset = getattr(dataset, opt.data_val)(
+        print('Loading val data for [%s]: %s.'%(opt.dataset_val, opt.data_root))
+        val_dataset = getattr(dataset, opt.dataset_val)(
             root_dir=opt.data_root,
             ckpt_dir=data_ckpt_dir,
             data_type=opt.data_type,
@@ -200,7 +200,6 @@ def train():
             sample_observations=opt.sample_observations_val,
             sample_instances=opt.sample_instances_val,
             load_depth=(opt.geo_weight > 0.0))
-
         print('[DONE] load val dataset.', len(val_dataset))
 
         val_dataloader = DataLoader(val_dataset,

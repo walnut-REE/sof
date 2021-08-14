@@ -162,7 +162,8 @@ def show_images(images, titles=None):
     if titles is None: titles = ['Image (%d)' % i for i in range(1, n_images + 1)]
     fig = plt.figure()
     for n, (image, title) in enumerate(zip(images, titles)):
-        a = fig.add_subplot(np.ceil(n_images / float(cols)), cols, n + 1)
+        a = fig.add_subplot(
+            np.ceil(n_images/float(cols)), cols, n + 1)
         im = a.imshow(image)
 
         a.get_xaxis().set_visible(False)

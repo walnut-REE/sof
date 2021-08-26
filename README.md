@@ -45,7 +45,7 @@ Secondly, to expand the geometric sampling space with single view portrait segma
 Please download the pre-trained checkpoint from either [GoogleDrive](https://drive.google.com/drive/folders/1Ursk30iAZY6cdPKE8TznYhOYHuFAzyK8?usp=sharing) or [BaiduDisk](https://pan.baidu.com/s/1KXUDwEhPt3YEarWI85Hufw) (password: k0b8) and save to `./checkpoints`.
 
 ## Inference
-Please follow [`renderer.ipynb`](https://github.com/apchenstu/softgan_test/blob/master/renderer.ipynb) in the SofGAN repo for free-view portrait generation.
+Please follow [`renderer.ipynb`](https://github.com/apchenstu/sofgan/blob/master/renderer.ipynb) in the SofGAN repo for free-view portrait generation.
 
 Once trained, SOF could be used for generating free-view segmentation maps for arbitrary instances in the geometric space. The inference codes are provided in notebooks in `scripts`:
 * Most testing codes are included in `scripts/TestAll.ipynb`, e.g. generating multiview images, modify attributes, visualize depth layers and build depth prior with marching cube.

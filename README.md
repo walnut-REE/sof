@@ -33,13 +33,21 @@ Ideally, `SOF` could be trained with your own datasets with multi-view face segm
 As the accuracy of camera parameters might largly affect the training, you can specify `--opt_cam` during training to automatically optimize the camera parameters.
 
 ## Training
+### STEP 1: Training network parameters
 The training is done following two phrases. Firstly, please train the network parameters with multiview segmaps:
 ```
 python train.py --config_filepath=./configs/face_seg_real.yml 
 ```
 Training might take 1 to 3 days depends on the dataset size and quality.
 
-Secondly, to expand the geometric sampling space with single view portrait segmaps like from [CelebAMaskHD](), please set `--overwrite_embeddings` to `False`, and specify `--checkpoint_path` as the trained checkpoint in the first step.
+### STEP 2 (optional): Inverse rendering
+We use inverse rendering to expand the trained geometric sampling space with single view segmaps collected from [CelebAMaskHQ](https://github.com/switchablenorms/CelebAMask-HQ). The example config file is provided in `./configs/face_seg_single_view.yml`, notice that we set `--overwrite_embeddings` and `--freeze_networks` to `True`, and specify `--checkpoint_path` as the trained checkpoint in [STEP 1](https://github.com/walnut-REE/sof#training). After training, you can access the corresponding latent code for each portrait by loading the checkpoint.
+
+```
+python train.py --config_filepath=./configs/face_seg_single_view.yml 
+```
+Similar process could be used to back project in-the-wild portrait images into a latent vector in `SOF` geometric sampling space, and used for mutiview portrait generation.
+
 
 ## Pretrained Checkpoints
 Please download the pre-trained checkpoint from either [GoogleDrive](https://drive.google.com/drive/folders/1Ursk30iAZY6cdPKE8TznYhOYHuFAzyK8?usp=sharing) or [BaiduDisk](https://pan.baidu.com/s/1KXUDwEhPt3YEarWI85Hufw) (password: k0b8) and save to `./checkpoints`.

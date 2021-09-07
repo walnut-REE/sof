@@ -1,6 +1,6 @@
 
-data_root: /data/anpei/facial-data/seg_video/0000/images
-checkpoint_path: ./logs/checkpoints/face_seg_19.pth # Path to the pre-trained checkpoint
+data_root: ./data/seg_single_view
+checkpoint_path: ./checkpoints/epoch_0250_iter_050000.pth # Path to the pre-trained checkpoint
 data_type: seg
 overwrite_embeddings: True
 no_validation: True
